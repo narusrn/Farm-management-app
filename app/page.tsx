@@ -305,6 +305,11 @@ export default function RiceFitApp() {
             return;
           }
           const profile = await window.liff.getProfile();
+
+          console.log("[LIFF] Full profile:", profile);
+          console.log("[LIFF] userId:", profile.userId);
+          console.log("[LIFF] displayName:", profile.displayName);
+          
           setUserId(profile.userId);
           setUserProfile({ displayName: profile.displayName });
         } else {
