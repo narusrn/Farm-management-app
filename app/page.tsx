@@ -5,7 +5,7 @@ import Script from "next/script";
 
 // Configuration
 const CONFIG = {
-  LIFF_ID: "YOUR_LIFF_ID",
+  LIFF_ID: "2009831998-FmDIbhyb",
   API_BASE_URL: "https://your-api.com",
   DEFAULT_CENTER: [15.87, 100.9925] as [number, number],
   DEFAULT_ZOOM: 6,
