@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-const NECTEC_URL = "https://www.nectec.or.th/innovation/innovation-service/digital-agri-api/rice/phenotype";
-const API_KEY = "1ewhHdLWm7aTTFD5LKl5F1sIjECT91oshrOD0StnmW4=";
+const NECTEC_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/rice/phenotype`;
+const API_KEY = process.env.NECTEC_API_KEY ?? "";
 
 export async function GET() {
   try {

@@ -13,9 +13,7 @@ import {
 } from "@/app/api/routes/farm";
 
 const CONFIG = {
-  LIFF_ID: "2009831998-FmDIbhyb",
-  API_BASE_URL: "https://www.nectec.or.th/innovation/innovation-service/digital-agri-api",
-  RICE_API_KEY: "1ewhHdLWm7aTTFD5LKl5F1sIjECT91oshrOD0StnmW4=",
+  LIFF_ID: process.env.NEXT_PUBLIC_LIFF_ID ?? "",
   DEFAULT_CENTER: [15.87, 100.9925] as [number, number],
   DEFAULT_ZOOM: 6,
   FARM_ZOOM: 15,

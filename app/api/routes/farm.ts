@@ -1,4 +1,4 @@
-const BASE_URL = "https://www.nectec.or.th/innovation/innovation-service/digital-agri-api";
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const STORAGE_KEY = "ricefit_farms";
 
 export interface Farm {
