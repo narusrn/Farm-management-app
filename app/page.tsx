@@ -2,24 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import { getUser } from "@/app/api/routes/user";
+import {
+  getFarms as apiFetchFarms,
+  createFarm as apiCreateFarm,
+  updateFarm as apiUpdateFarm,
+  deleteFarm as apiDeleteFarm,
+  Farm,
+  FarmPayload,
+} from "@/app/api/routes/farm";
 
-// Configuration
 const CONFIG = {
   LIFF_ID: "2009831998-FmDIbhyb",
-  API_BASE_URL: "https://your-api.com",
+  API_BASE_URL: "https://www.nectec.or.th/innovation/innovation-service/digital-agri-api",
+  RICE_API_KEY: "1ewhHdLWm7aTTFD5LKl5F1sIjECT91oshrOD0StnmW4=",
   DEFAULT_CENTER: [15.87, 100.9925] as [number, number],
   DEFAULT_ZOOM: 6,
   FARM_ZOOM: 15,
 };
 
-interface Farm {
-  id: string;
-  name: string;
-  polygon: [number, number][];
+interface RiceVariety {
+  rice_variety: string;
   rice_type: string;
-  planting_date: string;
-  is_default: boolean;
-  created_at?: string;
 }
 
 interface UserProfile {
@@ -29,18 +33,18 @@ interface UserProfile {
 
 type Screen = "farms" | "draw" | "form" | "preview";
 
-const RICE_TYPES: Record<string, string> = {
-  KDML105: "ข้าวหอมมะลิ 105",
-  RD6: "กข6",
-  RD15: "กข15",
-  RD21: "กข21",
-  RD41: "กข41",
-  RD47: "กข47",
-  RD49: "กข49",
-  CHAINAT1: "ชัยนาท 1",
-  SUPHANBURI1: "สุพรรณบุรี 1",
-  OTHER: "อื่นๆ",
-};
+const FALLBACK_RICE_VARIETIES: RiceVariety[] = [
+  { rice_variety: "ข้าวหอมมะลิ 105", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "กข6", rice_type: "ข้าวเหนียว" },
+  { rice_variety: "กข15", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "กข21", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "กข41", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "กข47", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "กข49", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "ชัยนาท 1", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "สุพรรณบุรี 1", rice_type: "ข้าวเจ้า" },
+  { rice_variety: "อื่นๆ", rice_type: "" },
+];
 
 declare global {
   interface Window {
@@ -50,7 +54,8 @@ declare global {
       login: () => void;
       getProfile: () => Promise<{ userId: string; displayName: string }>;
     };
-    L: typeof import("leaflet");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    L: any;
   }
 }
 
@@ -64,157 +69,92 @@ export default function RiceFitApp() {
   const [currentFarm, setCurrentFarm] = useState<Farm | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingFarmId, setEditingFarmId] = useState<string | null>(null);
-  const [drawnPolygon, setDrawnPolygon] = useState<[number, number][] | null>(null);
+  const [markerLocation, setMarkerLocation] = useState<[number, number] | null>(null);
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const [leafletDrawLoaded, setLeafletDrawLoaded] = useState(false);
+  const [riceVarieties, setRiceVarieties] = useState<RiceVariety[]>(FALLBACK_RICE_VARIETIES);
 
   // Form state
   const [farmName, setFarmName] = useState("");
   const [riceType, setRiceType] = useState("");
   const [plantingDate, setPlantingDate] = useState("");
   const [isDefault, setIsDefault] = useState(false);
+  const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(false);
+  const [notifyBlast, setNotifyBlast] = useState(false);
 
-  // Map refs
-  const drawMapRef = useRef<L.Map | null>(null);
-  const previewMapRef = useRef<L.Map | null>(null);
-  const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
-  const drawControlRef = useRef<L.Control.Draw | null>(null);
+  // Map refs — typed as any because Leaflet is loaded via CDN, not npm
+  const drawMapRef = useRef<any>(null);
+  const previewMapRef = useRef<any>(null);
+  const mapMarkerRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const previewMapContainerRef = useRef<HTMLDivElement>(null);
 
-  // Show toast
   const showToast = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(null), 2500);
   };
 
-  // Format date
   const formatDate = (dateString: string) => {
     if (!dateString) return "-";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("th-TH", {
+    return new Date(dateString).toLocaleDateString("th-TH", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
   };
 
-  // Calculate area
-  const calculateArea = (polygon: [number, number][]) => {
-    if (!polygon || polygon.length < 3) return 0;
-    let area = 0;
-    const n = polygon.length;
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n;
-      area += polygon[i][1] * polygon[j][0];
-      area -= polygon[j][1] * polygon[i][0];
-    }
-    area = Math.abs(area) / 2;
-    const lat = polygon.reduce((sum, c) => sum + c[0], 0) / n;
-    const metersPerDegree = 111320 * Math.cos((lat * Math.PI) / 180);
-    return area * metersPerDegree * metersPerDegree;
-  };
-
-  // Format area
-  const formatArea = (sqMeters: number) => {
-    const rai = sqMeters / 1600;
-    if (rai >= 1) {
-      return rai.toFixed(2) + " ไร่";
-    } else {
-      const sqWa = sqMeters / 4;
-      return sqWa.toFixed(0) + " ตร.วา";
-    }
-  };
-
-  // Load farms
-  const loadFarms = async () => {
-    try {
-      setLoading(true);
-      if (CONFIG.API_BASE_URL === "https://your-api.com") {
-        await new Promise((r) => setTimeout(r, 300));
-        const saved = localStorage.getItem("ricefit_farms");
-        setFarms(saved ? JSON.parse(saved) : []);
-      } else {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/farm?user_id=${userId}`);
+  // Fetch rice varieties via Next.js proxy route (avoids CORS)
+  useEffect(() => {
+    const fetchRiceVarieties = async () => {
+      try {
+        const res = await fetch("/api/rice");
         const data = await res.json();
-        setFarms(data.farms || []);
+        if (Array.isArray(data.result) && data.result.length > 0) {
+          setRiceVarieties(data.result);
+        }
+      } catch {
+        // keep FALLBACK_RICE_VARIETIES (already set as default state)
       }
+    };
+    fetchRiceVarieties();
+  }, []);
+
+  const loadFarms = async (uid?: string) => {
+    try {
+      const data = await apiFetchFarms(uid || userId || "");
+      setFarms(data);
     } catch {
       showToast("ไม่สามารถโหลดข้อมูลได้");
       setFarms([]);
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Save farm
   const saveFarm = async () => {
-    console.log("[v0] saveFarm called");
-    console.log("[v0] farmName:", farmName);
-    console.log("[v0] riceType:", riceType);
-    console.log("[v0] plantingDate:", plantingDate);
-    console.log("[v0] drawnPolygon:", drawnPolygon);
-    
-    if (!farmName.trim()) {
-      console.log("[v0] Missing farmName");
-      showToast("กรุณากรอกชื่อแปลง");
-      return;
-    }
-    if (!riceType) {
-      console.log("[v0] Missing riceType");
-      showToast("กรุณาเลือกพันธุ์ข้าว");
-      return;
-    }
-    if (!plantingDate) {
-      console.log("[v0] Missing plantingDate");
-      showToast("กรุณาเลือกวันที่เพาะปลูก");
-      return;
-    }
-    if (!drawnPolygon) {
-      console.log("[v0] Missing drawnPolygon");
-      showToast("กรุณาวาดขอบเขตแปลง");
-      return;
-    }
+    if (!farmName.trim()) { showToast("กรุณากรอกชื่อแปลง"); return; }
+    if (!riceType) { showToast("กรุณาเลือกพันธุ์ข้าว"); return; }
+    if (!plantingDate) { showToast("กรุณาเลือกวันที่เพาะปลูก"); return; }
+    if (!markerLocation) { showToast("กรุณาปักหมุดตำแหน่งแปลง"); return; }
 
     try {
       setLoading(true);
-      if (CONFIG.API_BASE_URL === "https://your-api.com") {
-        await new Promise((r) => setTimeout(r, 300));
-        let newFarms = [...farms];
-        if (isEditing && editingFarmId) {
-          const idx = newFarms.findIndex((f) => f.id === editingFarmId);
-          if (idx !== -1) {
-            newFarms[idx] = {
-              ...newFarms[idx],
-              name: farmName,
-              polygon: drawnPolygon,
-              rice_type: riceType,
-              planting_date: plantingDate,
-              is_default: isDefault,
-            };
-          }
-        } else {
-          const newFarm: Farm = {
-            id: "farm_" + Date.now(),
-            name: farmName,
-            polygon: drawnPolygon,
-            rice_type: riceType,
-            planting_date: plantingDate,
-            is_default: isDefault,
-            created_at: new Date().toISOString(),
-          };
-          newFarms.push(newFarm);
-        }
-        if (isDefault) {
-          const targetId = editingFarmId || newFarms[newFarms.length - 1].id;
-          newFarms = newFarms.map((f) => ({ ...f, is_default: f.id === targetId }));
-        }
-        localStorage.setItem("ricefit_farms", JSON.stringify(newFarms));
-        setFarms(newFarms);
-        console.log("[v0] Saved to localStorage:", newFarms);
+      const payload: FarmPayload = {
+        user_id: userId || "",
+        name: farmName,
+        location: markerLocation,
+        rice_type: riceType,
+        planting_date: plantingDate,
+        is_default: isDefault,
+        notify_bacterial_blight: notifyBacterialBlight,
+        notify_blast: notifyBlast,
+      };
+
+      if (isEditing && editingFarmId) {
+        await apiUpdateFarm(editingFarmId, payload);
+      } else {
+        await apiCreateFarm(payload);
       }
-      console.log("[v0] Save successful, navigating to farms");
+
+      setFarms(await apiFetchFarms(userId || ""));
       showToast("บันทึกสำเร็จ");
       resetForm();
       setCurrentScreen("farms");
@@ -225,19 +165,13 @@ export default function RiceFitApp() {
     }
   };
 
-  // Delete farm
   const deleteFarm = async () => {
     if (!editingFarmId) return;
     if (!confirm("ต้องการลบแปลงนี้หรือไม่?")) return;
-
     try {
       setLoading(true);
-      if (CONFIG.API_BASE_URL === "https://your-api.com") {
-        await new Promise((r) => setTimeout(r, 300));
-        const newFarms = farms.filter((f) => f.id !== editingFarmId);
-        localStorage.setItem("ricefit_farms", JSON.stringify(newFarms));
-        setFarms(newFarms);
-      }
+      await apiDeleteFarm(editingFarmId, userId || "");
+      setFarms(await apiFetchFarms(userId || ""));
       showToast("ลบแปลงสำเร็จ");
       resetForm();
       setCurrentScreen("farms");
@@ -248,39 +182,37 @@ export default function RiceFitApp() {
     }
   };
 
-  // Reset form
   const resetForm = () => {
     setIsEditing(false);
     setEditingFarmId(null);
     setCurrentFarm(null);
-    setDrawnPolygon(null);
+    setMarkerLocation(null);
     setFarmName("");
     setRiceType("");
     setPlantingDate("");
     setIsDefault(false);
+    setNotifyBacterialBlight(false);
+    setNotifyBlast(false);
   };
 
-  // View farm
   const viewFarm = (farmId: string) => {
     const farm = farms.find((f) => f.id === farmId);
-    if (farm) {
-      setCurrentFarm(farm);
-      setCurrentScreen("preview");
-    }
+    if (farm) { setCurrentFarm(farm); setCurrentScreen("preview"); }
   };
 
-  // Edit farm
   const editFarm = (farmId: string) => {
     const farm = farms.find((f) => f.id === farmId);
     if (farm) {
       setIsEditing(true);
       setEditingFarmId(farmId);
       setCurrentFarm(farm);
-      setDrawnPolygon(farm.polygon);
+      setMarkerLocation(farm.location);
       setFarmName(farm.name);
       setRiceType(farm.rice_type);
       setPlantingDate(farm.planting_date);
       setIsDefault(farm.is_default);
+      setNotifyBacterialBlight(farm.notify_bacterial_blight || false);
+      setNotifyBlast(farm.notify_blast || false);
       setCurrentScreen("draw");
     }
   };
@@ -288,78 +220,58 @@ export default function RiceFitApp() {
   // Initialize LIFF
   useEffect(() => {
     if (!scriptsLoaded) return;
-    
     const initLiff = async () => {
       try {
         if (window.liff) {
           await window.liff.init({ liffId: CONFIG.LIFF_ID });
           if (!window.liff.isLoggedIn()) {
-            if (window.location.hostname === "localhost" || CONFIG.LIFF_ID === "YOUR_LIFF_ID") {
+            if (window.location.hostname === "localhost") {
+              const profile = await getUser("mock_user_123");
               setUserId("mock_user_123");
-              setUserProfile({ displayName: "ผู้ใช้ทดสอบ" });
+              setUserProfile({ ...profile, displayName: "ผู้ใช้ทดสอบ" });
+              await loadFarms("mock_user_123");
               setLoading(false);
-              await loadFarms();
               return;
             }
             window.liff.login();
             return;
           }
-          const profile = await window.liff.getProfile();
-
-          console.log("[LIFF] Full profile:", profile);
-          console.log("[LIFF] userId:", profile.userId);
-          console.log("[LIFF] displayName:", profile.displayName);
-          
-          setUserId(profile.userId);
-          setUserProfile({ displayName: profile.displayName });
+          const liffProfile = await window.liff.getProfile();
+          console.log("[LIFF] userId:", liffProfile.userId);
+          const apiProfile = await getUser(liffProfile.userId);
+          setUserId(liffProfile.userId);
+          setUserProfile({ ...apiProfile, displayName: liffProfile.displayName });
+          await loadFarms(liffProfile.userId);
         } else {
+          const profile = await getUser("mock_user_123");
           setUserId("mock_user_123");
-          setUserProfile({ displayName: "ผู้ใช้ทดสอบ" });
+          setUserProfile({ ...profile, displayName: "ผู้ใช้ทดสอบ" });
+          await loadFarms("mock_user_123");
         }
       } catch {
         setUserId("mock_user_123");
         setUserProfile({ displayName: "ผู้ใช้ทดสอบ" });
+        await loadFarms("mock_user_123");
       }
       setLoading(false);
-      loadFarms();
     };
-
     initLiff();
   }, [scriptsLoaded]);
 
-  // Initialize draw map
+  // Initialize draw map — click to place marker
   useEffect(() => {
-    if (currentScreen !== "draw" || !leafletLoaded || !leafletDrawLoaded) return;
+    if (currentScreen !== "draw" || !leafletLoaded) return;
     if (!mapContainerRef.current) return;
-
     const L = window.L;
-    if (!L) {
-      console.log("[v0] Leaflet not loaded yet");
-      return;
-    }
+    if (!L) return;
 
-    console.log("[v0] Initializing draw map");
-    console.log("[v0] Container:", mapContainerRef.current);
-    console.log("[v0] Container size:", mapContainerRef.current.offsetWidth, "x", mapContainerRef.current.offsetHeight);
+    if (drawMapRef.current) { drawMapRef.current.remove(); drawMapRef.current = null; }
+    mapMarkerRef.current = null;
 
-    // Clean up existing map
-    if (drawMapRef.current) {
-      drawMapRef.current.remove();
-      drawMapRef.current = null;
-    }
-
-    // Wait for container to be visible
     const initMap = () => {
       if (!mapContainerRef.current) return;
-      
       const rect = mapContainerRef.current.getBoundingClientRect();
-      console.log("[v0] Container rect:", rect);
-      
-      if (rect.width === 0 || rect.height === 0) {
-        console.log("[v0] Container not visible yet, retrying...");
-        setTimeout(initMap, 100);
-        return;
-      }
+      if (rect.width === 0 || rect.height === 0) { setTimeout(initMap, 100); return; }
 
       try {
         const map = L.map(mapContainerRef.current, {
@@ -367,85 +279,32 @@ export default function RiceFitApp() {
           zoom: CONFIG.DEFAULT_ZOOM,
           zoomControl: true,
         });
-        console.log("[v0] Map created");
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "© OpenStreetMap",
           maxZoom: 19,
         }).addTo(map);
-        console.log("[v0] Tile layer added");
 
-        const drawnItems = new L.FeatureGroup();
-        map.addLayer(drawnItems);
-        drawnItemsRef.current = drawnItems;
+        const placeMarker = (lat: number, lng: number) => {
+          if (mapMarkerRef.current) mapMarkerRef.current.remove();
+          mapMarkerRef.current = L.marker([lat, lng]).addTo(map);
+          setMarkerLocation([lat, lng]);
+        };
 
-        const drawControl = new L.Control.Draw({
-          draw: {
-            polygon: {
-              allowIntersection: false,
-              showArea: true,
-              shapeOptions: {
-                color: "#22c55e",
-                fillColor: "#22c55e",
-                fillOpacity: 0.3,
-              },
-            },
-            polyline: false,
-            rectangle: false,
-            circle: false,
-            marker: false,
-            circlemarker: false,
-          },
-          edit: {
-            featureGroup: drawnItems,
-            remove: false,
-          },
-        });
-        map.addControl(drawControl);
-        drawControlRef.current = drawControl;
-        console.log("[v0] Draw control added");
+        map.on("click", (e: any) => placeMarker(e.latlng.lat, e.latlng.lng));
 
-        map.on(L.Draw.Event.CREATED, (e: L.DrawEvents.Created) => {
-          drawnItems.clearLayers();
-          drawnItems.addLayer(e.layer);
-          const latLngs = (e.layer as L.Polygon).getLatLngs()[0] as L.LatLng[];
-          const polygon: [number, number][] = latLngs.map((ll) => [ll.lat, ll.lng]);
-          setDrawnPolygon(polygon);
-        });
-
-        map.on(L.Draw.Event.EDITED, (e: L.DrawEvents.Edited) => {
-          e.layers.eachLayer((layer) => {
-            const latLngs = (layer as L.Polygon).getLatLngs()[0] as L.LatLng[];
-            const polygon: [number, number][] = latLngs.map((ll) => [ll.lat, ll.lng]);
-            setDrawnPolygon(polygon);
-          });
-        });
-
-        // Show existing polygon if editing
-        if (isEditing && currentFarm?.polygon) {
-          const polygon = L.polygon(currentFarm.polygon, {
-            color: "#22c55e",
-            fillColor: "#22c55e",
-            fillOpacity: 0.3,
-          });
-          drawnItems.addLayer(polygon);
-          map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
-        } else {
-          // Get user location
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                map.setView([pos.coords.latitude, pos.coords.longitude], CONFIG.FARM_ZOOM);
-              },
-              () => {},
-              { enableHighAccuracy: true }
-            );
-          }
+        if (isEditing && currentFarm?.location) {
+          placeMarker(currentFarm.location[0], currentFarm.location[1]);
+          map.setView(currentFarm.location, CONFIG.FARM_ZOOM);
+        } else if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], CONFIG.FARM_ZOOM),
+            () => {},
+            { enableHighAccuracy: true }
+          );
         }
 
         drawMapRef.current = map;
-
-        // Invalidate size after render
         setTimeout(() => map.invalidateSize(), 100);
         setTimeout(() => map.invalidateSize(), 500);
       } catch (err) {
@@ -456,35 +315,24 @@ export default function RiceFitApp() {
     setTimeout(initMap, 200);
 
     return () => {
-      if (drawMapRef.current) {
-        drawMapRef.current.remove();
-        drawMapRef.current = null;
-      }
+      if (drawMapRef.current) { drawMapRef.current.remove(); drawMapRef.current = null; }
+      mapMarkerRef.current = null;
     };
-  }, [currentScreen, leafletLoaded, leafletDrawLoaded, isEditing, currentFarm]);
+  }, [currentScreen, leafletLoaded, isEditing, currentFarm]);
 
   // Initialize preview map
   useEffect(() => {
     if (currentScreen !== "preview" || !leafletLoaded) return;
     if (!previewMapContainerRef.current || !currentFarm) return;
-
     const L = window.L;
     if (!L) return;
 
-    // Clean up existing map
-    if (previewMapRef.current) {
-      previewMapRef.current.remove();
-      previewMapRef.current = null;
-    }
+    if (previewMapRef.current) { previewMapRef.current.remove(); previewMapRef.current = null; }
 
     const initMap = () => {
       if (!previewMapContainerRef.current) return;
-
       const rect = previewMapContainerRef.current.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) {
-        setTimeout(initMap, 100);
-        return;
-      }
+      if (rect.width === 0 || rect.height === 0) { setTimeout(initMap, 100); return; }
 
       try {
         const map = L.map(previewMapContainerRef.current, {
@@ -498,13 +346,9 @@ export default function RiceFitApp() {
           maxZoom: 19,
         }).addTo(map);
 
-        if (currentFarm.polygon) {
-          const polygon = L.polygon(currentFarm.polygon, {
-            color: "#22c55e",
-            fillColor: "#22c55e",
-            fillOpacity: 0.3,
-          }).addTo(map);
-          map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
+        if (currentFarm.location) {
+          L.marker(currentFarm.location).addTo(map);
+          map.setView(currentFarm.location, CONFIG.FARM_ZOOM);
         }
 
         previewMapRef.current = map;
@@ -517,91 +361,46 @@ export default function RiceFitApp() {
     setTimeout(initMap, 200);
 
     return () => {
-      if (previewMapRef.current) {
-        previewMapRef.current.remove();
-        previewMapRef.current = null;
-      }
+      if (previewMapRef.current) { previewMapRef.current.remove(); previewMapRef.current = null; }
     };
   }, [currentScreen, leafletLoaded, currentFarm]);
 
-  // Clear polygon
-  const clearPolygon = () => {
-    if (drawnItemsRef.current) {
-      drawnItemsRef.current.clearLayers();
-    }
-    setDrawnPolygon(null);
+  const clearMarker = () => {
+    if (mapMarkerRef.current) { mapMarkerRef.current.remove(); mapMarkerRef.current = null; }
+    setMarkerLocation(null);
   };
 
-  // Get my location
   const getMyLocation = () => {
-    if (!navigator.geolocation) {
-      showToast("เบราว์เซอร์ไม่รองรับ GPS");
-      return;
-    }
+    if (!navigator.geolocation) { showToast("เบราว์เซอร์ไม่รองรับ GPS"); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (drawMapRef.current) {
-          drawMapRef.current.setView([pos.coords.latitude, pos.coords.longitude], CONFIG.FARM_ZOOM);
-        }
+        if (drawMapRef.current) drawMapRef.current.setView([pos.coords.latitude, pos.coords.longitude], CONFIG.FARM_ZOOM);
       },
-      () => {
-        showToast("ไม่สามารถระบุตำแหน่งได้");
-      },
+      () => showToast("ไม่สามารถระบุตำแหน่งได้"),
       { enableHighAccuracy: true }
     );
   };
 
-  // Proceed to form
   const proceedToForm = () => {
-    if (!drawnPolygon || drawnPolygon.length < 3) {
-      showToast("กรุณาวาดขอบเขตแปลง");
-      return;
-    }
+    if (!markerLocation) { showToast("กรุณาปักหมุดตำแหน่งแปลง"); return; }
     setCurrentScreen("form");
   };
 
   return (
     <>
-      {/* External Scripts */}
-      <Script
-        src="https://static.line-scdn.net/liff/edge/2/sdk.js"
-        onLoad={() => setScriptsLoaded(true)}
-      />
+      <Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" onLoad={() => setScriptsLoaded(true)} />
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-      <Script
-        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        onLoad={() => setLeafletLoaded(true)}
-      />
-      <Script
-        src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"
-        onLoad={() => setLeafletDrawLoaded(true)}
-      />
+      <Script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onLoad={() => setLeafletLoaded(true)} />
 
       <style jsx global>{`
-        * {
-          -webkit-tap-highlight-color: transparent;
-        }
-        body {
-          font-family: "Sarabun", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          overscroll-behavior: none;
-        }
-        .leaflet-draw-toolbar a {
-          background-size: 24px 24px;
-        }
+        * { -webkit-tap-highlight-color: transparent; }
+        body { font-family: "Sarabun", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
         @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
-      {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-white/90 flex items-center justify-center z-[9999]">
           <div className="text-center">
@@ -611,9 +410,8 @@ export default function RiceFitApp() {
         </div>
       )}
 
-      {/* Toast */}
       {toast && (
-        <div 
+        <div
           className="fixed bottom-24 left-4 right-4 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg z-[9999] text-center"
           style={{ animation: "slideUp 0.3s ease-out" }}
         >
@@ -626,9 +424,7 @@ export default function RiceFitApp() {
         <div className="min-h-dvh flex flex-col bg-gray-50">
           <header className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
             <h1 className="text-xl font-bold text-gray-900">แปลงของฉัน</h1>
-            {userProfile && (
-              <p className="text-sm text-gray-500 mt-1">สวัสดี, {userProfile.displayName}</p>
-            )}
+            {userProfile && <p className="text-sm text-gray-500 mt-1">สวัสดี, {userProfile.displayName}</p>}
           </header>
 
           <main className="flex-1 overflow-auto p-4 pb-24">
@@ -642,10 +438,7 @@ export default function RiceFitApp() {
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">ยังไม่มีแปลงเพาะปลูก</h2>
                 <p className="text-gray-500 mb-6">เพิ่มแปลงเพื่อเริ่มใช้งาน</p>
                 <button
-                  onClick={() => {
-                    resetForm();
-                    setCurrentScreen("draw");
-                  }}
+                  onClick={() => { resetForm(); setCurrentScreen("draw"); }}
                   className="bg-green-600 text-white px-6 py-3 rounded-xl font-medium shadow-lg shadow-green-600/30 active:scale-95 transition-transform"
                 >
                   + เพิ่มแปลงแรก
@@ -656,14 +449,24 @@ export default function RiceFitApp() {
                 {farms.map((farm) => (
                   <div key={farm.id} className="bg-white rounded-2xl p-4 shadow-sm">
                     <div className="flex items-start justify-between mb-3">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold text-gray-900">{farm.name}</h3>
                           {farm.is_default && <span className="text-yellow-500 text-sm">&#9733;</span>}
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">{RICE_TYPES[farm.rice_type] || farm.rice_type}</p>
+                        <p className="text-sm text-gray-500 mt-1">{farm.rice_type}</p>
+                        {(farm.notify_bacterial_blight || farm.notify_blast) && (
+                          <div className="flex gap-1 mt-1.5 flex-wrap">
+                            {farm.notify_bacterial_blight && (
+                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">โรคขอบใบแห้ง</span>
+                            )}
+                            {farm.notify_blast && (
+                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">โรคไหม้</span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs text-gray-400">{formatDate(farm.planting_date)}</span>
+                      <span className="text-xs text-gray-400 ml-2 shrink-0">{formatDate(farm.planting_date)}</span>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -688,10 +491,7 @@ export default function RiceFitApp() {
           {farms.length > 0 && (
             <footer className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
               <button
-                onClick={() => {
-                  resetForm();
-                  setCurrentScreen("draw");
-                }}
+                onClick={() => { resetForm(); setCurrentScreen("draw"); }}
                 className="w-full bg-green-600 text-white py-4 rounded-xl font-medium shadow-lg shadow-green-600/30 active:scale-95 transition-transform"
               >
                 + เพิ่มแปลงใหม่
@@ -701,35 +501,29 @@ export default function RiceFitApp() {
         </div>
       )}
 
-      {/* Screen: Draw Map */}
+      {/* Screen: Draw Map — click to place marker */}
       {currentScreen === "draw" && (
         <div className="h-dvh flex flex-col">
           <header className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3 z-20">
             <button
-              onClick={() => {
-                resetForm();
-                setCurrentScreen("farms");
-              }}
+              onClick={() => { resetForm(); setCurrentScreen("farms"); }}
               className="p-2 -ml-2 rounded-lg hover:bg-gray-100 active:bg-gray-200"
             >
               <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-gray-900">วาดขอบเขตแปลง</h1>
+            <h1 className="text-lg font-bold text-gray-900">ปักหมุดตำแหน่งแปลง</h1>
           </header>
 
           <div className="flex-1 relative" style={{ minHeight: 0 }}>
-            <div
-              ref={mapContainerRef}
-              className="absolute inset-0"
-              style={{ zIndex: 1 }}
-            />
+            <div ref={mapContainerRef} className="absolute inset-0" style={{ zIndex: 1 }} />
 
             <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2">
               <button
-                onClick={clearPolygon}
+                onClick={clearMarker}
                 className="bg-white p-3 rounded-xl shadow-lg active:bg-gray-100 transition-colors"
+                title="ลบหมุด"
               >
                 <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -738,6 +532,7 @@ export default function RiceFitApp() {
               <button
                 onClick={getMyLocation}
                 className="bg-white p-3 rounded-xl shadow-lg active:bg-gray-100 transition-colors"
+                title="ตำแหน่งปัจจุบัน"
               >
                 <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -746,10 +541,17 @@ export default function RiceFitApp() {
               </button>
             </div>
 
-            {!drawnPolygon && (
+            {!markerLocation ? (
               <div className="absolute bottom-24 left-4 right-4 z-[1000] bg-white/95 backdrop-blur rounded-xl p-4 shadow-lg text-center">
-                <p className="text-gray-700 font-medium">กดปุ่มรูปหลายเหลี่ยมเพื่อวาดขอบเขตแปลง</p>
-                <p className="text-gray-500 text-sm mt-1">วาดอย่างน้อย 3 จุดเพื่อสร้างรูปหลายเหลี่ยม</p>
+                <p className="text-gray-700 font-medium">กดบนแผนที่เพื่อปักหมุดตำแหน่งแปลง</p>
+                <p className="text-gray-500 text-sm mt-1">หรือกดปุ่ม GPS เพื่อนำทางไปยังตำแหน่งปัจจุบัน</p>
+              </div>
+            ) : (
+              <div className="absolute bottom-24 left-4 right-4 z-[1000] bg-green-50/95 backdrop-blur rounded-xl p-3 shadow-lg text-center">
+                <p className="text-green-700 text-sm font-medium">ปักหมุดแล้ว</p>
+                <p className="text-green-600 text-xs mt-0.5">
+                  {markerLocation[0].toFixed(5)}, {markerLocation[1].toFixed(5)}
+                </p>
               </div>
             )}
           </div>
@@ -757,9 +559,9 @@ export default function RiceFitApp() {
           <footer className="p-4 bg-white border-t border-gray-200 z-20">
             <button
               onClick={proceedToForm}
-              disabled={!drawnPolygon || drawnPolygon.length < 3}
+              disabled={!markerLocation}
               className={`w-full py-4 rounded-xl font-medium transition-all ${
-                drawnPolygon && drawnPolygon.length >= 3
+                markerLocation
                   ? "bg-green-600 text-white shadow-lg shadow-green-600/30 active:scale-95"
                   : "bg-gray-300 text-gray-500 cursor-not-allowed"
               }`}
@@ -787,6 +589,7 @@ export default function RiceFitApp() {
 
           <main className="flex-1 overflow-auto p-4 pb-32">
             <div className="space-y-4">
+              {/* Farm Name */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อแปลง</label>
                 <input
@@ -798,6 +601,7 @@ export default function RiceFitApp() {
                 />
               </div>
 
+              {/* Rice Type */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <label className="block text-sm font-medium text-gray-700 mb-2">พันธุ์ข้าว</label>
                 <select
@@ -806,14 +610,15 @@ export default function RiceFitApp() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all appearance-none bg-white"
                 >
                   <option value="">เลือกพันธุ์ข้าว</option>
-                  {Object.entries(RICE_TYPES).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
+                  {riceVarieties.map((v) => (
+                    <option key={v.rice_variety} value={v.rice_variety}>
+                      {v.rice_variety}
                     </option>
                   ))}
                 </select>
               </div>
 
+              {/* Planting Date */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <label className="block text-sm font-medium text-gray-700 mb-2">วันที่เพาะปลูก</label>
                 <input
@@ -824,6 +629,38 @@ export default function RiceFitApp() {
                 />
               </div>
 
+              {/* Disease Notifications */}
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">การแจ้งเตือนโรคข้าว</h3>
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyBacterialBlight}
+                      onChange={(e) => setNotifyBacterialBlight(e.target.checked)}
+                      className="mt-0.5 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <div>
+                      <p className="text-gray-800 font-medium leading-tight">โรคขอบใบแห้ง</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Bacterial Leaf Blight</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyBlast}
+                      onChange={(e) => setNotifyBlast(e.target.checked)}
+                      className="mt-0.5 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <div>
+                      <p className="text-gray-800 font-medium leading-tight">โรคไหม้</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Blast</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Default Farm */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -836,11 +673,12 @@ export default function RiceFitApp() {
                 </label>
               </div>
 
-              {drawnPolygon && (
+              {/* Marker coordinates summary */}
+              {markerLocation && (
                 <div className="bg-green-50 rounded-2xl p-4 text-center">
-                  <p className="text-sm text-green-700">พื้นที่แปลง</p>
-                  <p className="text-2xl font-bold text-green-800 mt-1">
-                    {formatArea(calculateArea(drawnPolygon))}
+                  <p className="text-sm text-green-700">ตำแหน่งแปลง</p>
+                  <p className="text-sm font-semibold text-green-800 mt-1">
+                    {markerLocation[0].toFixed(5)}, {markerLocation[1].toFixed(5)}
                   </p>
                 </div>
               )}
@@ -852,9 +690,7 @@ export default function RiceFitApp() {
               onClick={saveFarm}
               disabled={loading}
               className={`w-full py-4 rounded-xl font-medium shadow-lg transition-all active:scale-95 ${
-                loading 
-                  ? "bg-gray-400 text-gray-200 cursor-wait" 
-                  : "bg-green-600 text-white shadow-green-600/30"
+                loading ? "bg-gray-400 text-gray-200 cursor-wait" : "bg-green-600 text-white shadow-green-600/30"
               }`}
             >
               {loading ? "กำลังบันทึก..." : "บันทึก"}
@@ -887,29 +723,32 @@ export default function RiceFitApp() {
           </header>
 
           <div className="flex-1 relative" style={{ minHeight: 0 }}>
-            <div
-              ref={previewMapContainerRef}
-              className="absolute inset-0"
-              style={{ zIndex: 1 }}
-            />
+            <div ref={previewMapContainerRef} className="absolute inset-0" style={{ zIndex: 1 }} />
 
             <div className="absolute bottom-4 left-4 right-4 z-[1000] bg-white/95 backdrop-blur rounded-2xl p-4 shadow-lg">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-gray-500">พันธุ์ข้าว</p>
-                  <p className="font-semibold text-gray-900">{RICE_TYPES[currentFarm.rice_type] || currentFarm.rice_type}</p>
+                  <p className="font-semibold text-gray-900">{currentFarm.rice_type}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-500">วันที่เพาะปลูก</p>
                   <p className="font-semibold text-gray-900">{formatDate(currentFarm.planting_date)}</p>
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <p className="text-sm text-gray-500">พื้นที่</p>
-                <p className="font-semibold text-green-600">
-                  {currentFarm.polygon ? formatArea(calculateArea(currentFarm.polygon)) : "-"}
-                </p>
-              </div>
+              {(currentFarm.notify_bacterial_blight || currentFarm.notify_blast) && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-sm text-gray-500 mb-1.5">การแจ้งเตือน</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {currentFarm.notify_bacterial_blight && (
+                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">โรคขอบใบแห้ง</span>
+                    )}
+                    {currentFarm.notify_blast && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">โรคไหม้</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
