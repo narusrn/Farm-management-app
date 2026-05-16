@@ -29,13 +29,12 @@ interface RiceVariety {
 }
 
 const STAGE_CONFIGS = [
-  { label: "ตกกล้า",           badge: "bg-green-100 text-green-700",    gradFrom: "#4ade80", gradTo: "#16a34a", dot: "#22c55e" },
-  { label: "แตกกอ",            badge: "bg-emerald-100 text-emerald-700", gradFrom: "#34d399", gradTo: "#059669", dot: "#10b981" },
-  { label: "ตั้งท้อง",        badge: "bg-lime-100 text-lime-700",       gradFrom: "#d9f99d", gradTo: "#65a30d", dot: "#84cc16" },
-  { label: "ออกรวง",           badge: "bg-yellow-100 text-yellow-700",   gradFrom: "#fde047", gradTo: "#ca8a04", dot: "#eab308" },
-  { label: "ใกล้เก็บเกี่ยว", badge: "bg-amber-100 text-amber-700",    gradFrom: "#fbbf24", gradTo: "#d97706", dot: "#f59e0b" },
+  { label: "ตกกล้า",           emoji: "🌱", badge: "bg-green-100 text-green-700",    gradFrom: "#4ade80", gradTo: "#16a34a", dot: "#22c55e" },
+  { label: "แตกกอ",            emoji: "🌿", badge: "bg-emerald-100 text-emerald-700", gradFrom: "#34d399", gradTo: "#059669", dot: "#10b981" },
+  { label: "ตั้งท้อง",        emoji: "🪴", badge: "bg-lime-100 text-lime-700",       gradFrom: "#d9f99d", gradTo: "#65a30d", dot: "#84cc16" },
+  { label: "ออกรวง",           emoji: "🌾", badge: "bg-yellow-100 text-yellow-700",   gradFrom: "#fde047", gradTo: "#ca8a04", dot: "#eab308" },
+  { label: "ใกล้เก็บเกี่ยว", emoji: "🍚", badge: "bg-amber-100 text-amber-700",    gradFrom: "#fbbf24", gradTo: "#d97706", dot: "#f59e0b" },
 ];
-const STAGE_LABELS_SHORT = ["ตกกล้า", "แตกกอ", "ตั้งท้อง", "ออกรวง", "เก็บเกี่ยว"];
 
 type GrowthStage = {
   label: string;
@@ -539,22 +538,20 @@ export default function RiceFitApp() {
                               <span className="text-xs text-gray-400">ปลูกมา {g.days} วัน</span>
                             </div>
                             <div className="flex items-center">
-                              {STAGE_LABELS_SHORT.map((lbl, i) => (
+                              {STAGE_CONFIGS.map((cfg, i) => (
                                 <div key={i} className="flex items-center" style={{ flex: i < 4 ? "1" : "0" }}>
-                                  <div className="flex flex-col items-center" style={{ width: 28 }}>
-                                    <div
-                                      className="w-2.5 h-2.5 rounded-full border-2 transition-all"
-                                      style={{
-                                        backgroundColor: i <= g.stageIndex ? g.dot : "transparent",
-                                        borderColor: i <= g.stageIndex ? g.dot : "#d1d5db",
-                                        boxShadow: i === g.stageIndex ? `0 0 0 2px white, 0 0 0 4px ${g.dot}` : undefined,
-                                      }}
-                                    />
-                                    <span className="text-center mt-0.5 leading-tight text-gray-400" style={{ fontSize: 8, width: 28 }}>{lbl}</span>
+                                  <div className="flex flex-col items-center" style={{ width: 32 }}>
+                                    <span
+                                      className="text-base transition-all"
+                                      style={{ opacity: i <= g.stageIndex ? 1 : 0.2, transform: i === g.stageIndex ? "scale(1.3)" : "scale(1)" }}
+                                    >
+                                      {cfg.emoji}
+                                    </span>
+                                    <span className="text-center mt-0.5 leading-tight text-gray-400" style={{ fontSize: 8, width: 32 }}>{cfg.label}</span>
                                   </div>
                                   {i < 4 && (
                                     <div
-                                      className="flex-1 h-0.5 -mt-3"
+                                      className="flex-1 h-0.5 -mt-3.5"
                                       style={{ backgroundColor: i < g.stageIndex ? g.dot : "#e5e7eb" }}
                                     />
                                   )}
