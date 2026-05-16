@@ -28,35 +28,35 @@ interface RiceVariety {
   harvest_month?: number;
 }
 
+const STAGE_CONFIGS = [
+  { label: "ตกกล้า",           badge: "bg-green-100 text-green-700",    gradFrom: "#4ade80", gradTo: "#16a34a", dot: "#22c55e" },
+  { label: "แตกกอ",            badge: "bg-emerald-100 text-emerald-700", gradFrom: "#34d399", gradTo: "#059669", dot: "#10b981" },
+  { label: "ตั้งท้อง",        badge: "bg-lime-100 text-lime-700",       gradFrom: "#d9f99d", gradTo: "#65a30d", dot: "#84cc16" },
+  { label: "ออกรวง",           badge: "bg-yellow-100 text-yellow-700",   gradFrom: "#fde047", gradTo: "#ca8a04", dot: "#eab308" },
+  { label: "ใกล้เก็บเกี่ยว", badge: "bg-amber-100 text-amber-700",    gradFrom: "#fbbf24", gradTo: "#d97706", dot: "#f59e0b" },
+];
+const STAGE_LABELS_SHORT = ["ตกกล้า", "แตกกอ", "ตั้งท้อง", "ออกรวง", "เก็บเกี่ยว"];
+
 type GrowthStage = {
   label: string;
-  color: string;
-  pct: number;
+  badge: string;
+  gradFrom: string;
+  gradTo: string;
+  dot: string;
+  stageIndex: number;
   days: number;
 };
 
 const getGrowthStage = (plantingDate: string, sensitivity?: string): GrowthStage | null => {
   const days = Math.floor((Date.now() - new Date(plantingDate).getTime()) / 86400000);
   if (days < 0) return null;
-  const total = sensitivity === "ไวแสง" ? 240 : 120;
-  const pct = Math.min(100, Math.round((days / total) * 100));
-  const stages = sensitivity === "ไวแสง"
-    ? [
-        { max: 30, label: "ตกกล้า", color: "bg-green-100 text-green-700" },
-        { max: 90, label: "แตกกอ", color: "bg-emerald-100 text-emerald-700" },
-        { max: 150, label: "ตั้งท้อง", color: "bg-lime-100 text-lime-700" },
-        { max: 200, label: "ออกรวง", color: "bg-yellow-100 text-yellow-700" },
-        { max: 240, label: "ใกล้เก็บเกี่ยว", color: "bg-amber-100 text-amber-700" },
-      ]
-    : [
-        { max: 15, label: "ตกกล้า", color: "bg-green-100 text-green-700" },
-        { max: 45, label: "แตกกอ", color: "bg-emerald-100 text-emerald-700" },
-        { max: 75, label: "ตั้งท้อง", color: "bg-lime-100 text-lime-700" },
-        { max: 105, label: "ออกรวง", color: "bg-yellow-100 text-yellow-700" },
-        { max: 120, label: "ใกล้เก็บเกี่ยว", color: "bg-amber-100 text-amber-700" },
-      ];
-  const stage = stages.find((s) => days <= s.max) ?? { label: "ครบฤดูกาล", color: "bg-gray-100 text-gray-600" };
-  return { label: stage.label, color: stage.color, pct, days };
+  const thresholds = sensitivity === "ไวแสง"
+    ? [30, 90, 150, 200, 240]
+    : [15, 45, 75, 105, 120];
+  let idx = thresholds.findIndex((t) => days <= t);
+  if (idx === -1) idx = 4;
+  const cfg = STAGE_CONFIGS[idx];
+  return { label: cfg.label, badge: cfg.badge, gradFrom: cfg.gradFrom, gradTo: cfg.gradTo, dot: cfg.dot, stageIndex: idx, days };
 };
 
 interface UserProfile {
@@ -484,8 +484,13 @@ export default function RiceFitApp() {
               <div className="space-y-3">
                 {farms.map((farm) => (
                   <div key={farm.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                    {/* Green accent bar */}
-                    <div className="h-1 bg-gradient-to-r from-green-400 to-emerald-500" />
+                    {/* Accent bar — color follows growth stage */}
+                    {(() => {
+                      const g = getGrowthStage(farm.planting_date, farm.sensitivity);
+                      return (
+                        <div className="h-1.5" style={{ background: g ? `linear-gradient(to right, ${g.gradFrom}, ${g.gradTo})` : "#e5e7eb" }} />
+                      );
+                    })()}
 
                     <div className="p-4">
                       {/* Header */}
@@ -523,21 +528,38 @@ export default function RiceFitApp() {
                         </div>
                       )}
 
-                      {/* Growth stage */}
+                      {/* Growth stage — milestone dots */}
                       {(() => {
                         const g = getGrowthStage(farm.planting_date, farm.sensitivity);
                         if (!g) return null;
                         return (
                           <div className="mb-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${g.color}`}>{g.label}</span>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${g.badge}`}>{g.label}</span>
                               <span className="text-xs text-gray-400">ปลูกมา {g.days} วัน</span>
                             </div>
-                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all"
-                                style={{ width: `${g.pct}%` }}
-                              />
+                            <div className="flex items-center">
+                              {STAGE_LABELS_SHORT.map((lbl, i) => (
+                                <div key={i} className="flex items-center" style={{ flex: i < 4 ? "1" : "0" }}>
+                                  <div className="flex flex-col items-center" style={{ width: 28 }}>
+                                    <div
+                                      className="w-2.5 h-2.5 rounded-full border-2 transition-all"
+                                      style={{
+                                        backgroundColor: i <= g.stageIndex ? g.dot : "transparent",
+                                        borderColor: i <= g.stageIndex ? g.dot : "#d1d5db",
+                                        boxShadow: i === g.stageIndex ? `0 0 0 2px white, 0 0 0 4px ${g.dot}` : undefined,
+                                      }}
+                                    />
+                                    <span className="text-center mt-0.5 leading-tight text-gray-400" style={{ fontSize: 8, width: 28 }}>{lbl}</span>
+                                  </div>
+                                  {i < 4 && (
+                                    <div
+                                      className="flex-1 h-0.5 -mt-3"
+                                      style={{ backgroundColor: i < g.stageIndex ? g.dot : "#e5e7eb" }}
+                                    />
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         );
