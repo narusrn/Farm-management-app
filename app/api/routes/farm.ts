@@ -29,8 +29,8 @@ export const getFarms = async (userId: string): Promise<Farm[]> => {
   const res = await fetch(`/api/farm/${userId}`);
   if (!res.ok) throw new Error("fetch farms failed");
   const data = await res.json();
-  if (Array.isArray(data)) return data;
-  return data.result ?? data.farms ?? data.data ?? [];
+  const list: any[] = Array.isArray(data) ? data : (data.result ?? data.farms ?? data.data ?? []);
+  return list.map((f) => ({ ...f, id: f.id ?? f.farm_id }));
 };
 
 // POST /farm/{user_id}
