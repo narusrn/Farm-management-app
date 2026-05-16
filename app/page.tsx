@@ -10,6 +10,7 @@ import {
   deleteFarm as apiDeleteFarm,
   Farm,
   FarmPayload,
+  DiseaseKey,
 } from "@/app/api/routes/farm";
 
 const CONFIG = {
@@ -76,7 +77,6 @@ export default function RiceFitApp() {
   const [farmName, setFarmName] = useState("");
   const [riceType, setRiceType] = useState("");
   const [plantingDate, setPlantingDate] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
   const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(false);
   const [notifyBlast, setNotifyBlast] = useState(false);
 
@@ -135,21 +135,23 @@ export default function RiceFitApp() {
 
     try {
       setLoading(true);
+      const diseases: DiseaseKey[] = [];
+      if (notifyBacterialBlight) diseases.push("blight");
+      if (notifyBlast) diseases.push("blast");
+
       const payload: FarmPayload = {
-        user_id: userId || "",
-        name: farmName,
-        location: markerLocation,
-        rice_type: riceType,
+        farm_name: farmName,
+        latitude: markerLocation[0],
+        longitude: markerLocation[1],
+        rice_variety: riceType,
         planting_date: plantingDate,
-        is_default: isDefault,
-        notify_bacterial_blight: notifyBacterialBlight,
-        notify_blast: notifyBlast,
+        notification_diseases: diseases,
       };
 
       if (isEditing && editingFarmId) {
-        await apiUpdateFarm(editingFarmId, payload);
+        await apiUpdateFarm(userId || "", editingFarmId, payload);
       } else {
-        await apiCreateFarm(payload);
+        await apiCreateFarm(userId || "", payload);
       }
 
       setFarms(await apiFetchFarms(userId || ""));
@@ -188,7 +190,6 @@ export default function RiceFitApp() {
     setFarmName("");
     setRiceType("");
     setPlantingDate("");
-    setIsDefault(false);
     setNotifyBacterialBlight(false);
     setNotifyBlast(false);
   };
@@ -204,13 +205,12 @@ export default function RiceFitApp() {
       setIsEditing(true);
       setEditingFarmId(farmId);
       setCurrentFarm(farm);
-      setMarkerLocation(farm.location);
-      setFarmName(farm.name);
-      setRiceType(farm.rice_type);
+      setMarkerLocation([farm.latitude, farm.longitude]);
+      setFarmName(farm.farm_name);
+      setRiceType(farm.rice_variety);
       setPlantingDate(farm.planting_date);
-      setIsDefault(farm.is_default);
-      setNotifyBacterialBlight(farm.notify_bacterial_blight || false);
-      setNotifyBlast(farm.notify_blast || false);
+      setNotifyBacterialBlight(farm.notification_diseases.includes("blight"));
+      setNotifyBlast(farm.notification_diseases.includes("blast"));
       setCurrentScreen("draw");
     }
   };
@@ -291,9 +291,9 @@ export default function RiceFitApp() {
 
         map.on("click", (e: any) => placeMarker(e.latlng.lat, e.latlng.lng));
 
-        if (isEditing && currentFarm?.location) {
-          placeMarker(currentFarm.location[0], currentFarm.location[1]);
-          map.setView(currentFarm.location, CONFIG.FARM_ZOOM);
+        if (isEditing && currentFarm) {
+          placeMarker(currentFarm.latitude, currentFarm.longitude);
+          map.setView([currentFarm.latitude, currentFarm.longitude], CONFIG.FARM_ZOOM);
         } else if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], CONFIG.FARM_ZOOM),
@@ -344,9 +344,10 @@ export default function RiceFitApp() {
           maxZoom: 19,
         }).addTo(map);
 
-        if (currentFarm.location) {
-          L.marker(currentFarm.location).addTo(map);
-          map.setView(currentFarm.location, CONFIG.FARM_ZOOM);
+        if (currentFarm.latitude && currentFarm.longitude) {
+          const pos: [number, number] = [currentFarm.latitude, currentFarm.longitude];
+          L.marker(pos).addTo(map);
+          map.setView(pos, CONFIG.FARM_ZOOM);
         }
 
         previewMapRef.current = map;
@@ -449,16 +450,15 @@ export default function RiceFitApp() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-gray-900">{farm.name}</h3>
-                          {farm.is_default && <span className="text-yellow-500 text-sm">&#9733;</span>}
+                          <h3 className="font-semibold text-gray-900">{farm.farm_name}</h3>
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">{farm.rice_type}</p>
-                        {(farm.notify_bacterial_blight || farm.notify_blast) && (
+                        <p className="text-sm text-gray-500 mt-1">{farm.rice_variety}</p>
+                        {farm.notification_diseases.length > 0 && (
                           <div className="flex gap-1 mt-1.5 flex-wrap">
-                            {farm.notify_bacterial_blight && (
+                            {farm.notification_diseases.includes("blight") && (
                               <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">โรคขอบใบแห้ง</span>
                             )}
-                            {farm.notify_blast && (
+                            {farm.notification_diseases.includes("blast") && (
                               <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">โรคไหม้</span>
                             )}
                           </div>
@@ -658,19 +658,6 @@ export default function RiceFitApp() {
                 </div>
               </div>
 
-              {/* Default Farm */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isDefault}
-                    onChange={(e) => setIsDefault(e.target.checked)}
-                    className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                  />
-                  <span className="text-gray-700 font-medium">ตั้งเป็นแปลงหลัก</span>
-                </label>
-              </div>
-
               {/* Marker coordinates summary */}
               {markerLocation && (
                 <div className="bg-green-50 rounded-2xl p-4 text-center">
@@ -717,7 +704,7 @@ export default function RiceFitApp() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-gray-900">{currentFarm.name}</h1>
+            <h1 className="text-lg font-bold text-gray-900">{currentFarm.farm_name}</h1>
           </header>
 
           <div className="flex-1 relative" style={{ minHeight: 0 }}>
@@ -727,21 +714,21 @@ export default function RiceFitApp() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-gray-500">พันธุ์ข้าว</p>
-                  <p className="font-semibold text-gray-900">{currentFarm.rice_type}</p>
+                  <p className="font-semibold text-gray-900">{currentFarm.rice_variety}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-500">วันที่เพาะปลูก</p>
                   <p className="font-semibold text-gray-900">{formatDate(currentFarm.planting_date)}</p>
                 </div>
               </div>
-              {(currentFarm.notify_bacterial_blight || currentFarm.notify_blast) && (
+              {currentFarm.notification_diseases.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-200">
                   <p className="text-sm text-gray-500 mb-1.5">การแจ้งเตือน</p>
                   <div className="flex gap-2 flex-wrap">
-                    {currentFarm.notify_bacterial_blight && (
+                    {currentFarm.notification_diseases.includes("blight") && (
                       <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">โรคขอบใบแห้ง</span>
                     )}
-                    {currentFarm.notify_blast && (
+                    {currentFarm.notification_diseases.includes("blast") && (
                       <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">โรคไหม้</span>
                     )}
                   </div>
