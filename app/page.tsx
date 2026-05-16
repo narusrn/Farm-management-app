@@ -445,45 +445,75 @@ export default function RiceFitApp() {
             ) : (
               <div className="space-y-3">
                 {farms.map((farm) => (
-                  <div key={farm.id} className="bg-white rounded-2xl p-4 shadow-sm">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-gray-900">{farm.farm_name}</h3>
+                  <div key={farm.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                    {/* Green accent bar */}
+                    <div className="h-1 bg-gradient-to-r from-green-400 to-emerald-500" />
+
+                    <div className="p-4">
+                      {/* Header */}
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center shrink-0">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+                          </svg>
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">{farm.rice_variety}</p>
-                        {farm.notification_diseases.length > 0 && (
-                          <div className="flex gap-1 mt-1.5 flex-wrap">
-                            {farm.notification_diseases.includes("blight") && (
-                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">โรคขอบใบแห้ง</span>
-                            )}
-                            {farm.notification_diseases.includes("blast") && (
-                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">โรคไหม้</span>
-                            )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-gray-900 text-base leading-tight">{farm.farm_name}</h3>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            <p className="text-sm text-gray-500 truncate">{farm.rice_variety}</p>
                           </div>
-                        )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-xs text-gray-400">เพาะปลูก</p>
+                          <p className="text-xs font-medium text-gray-600 mt-0.5">{formatDate(farm.planting_date)}</p>
+                        </div>
                       </div>
-                      <span className="text-xs text-gray-400 ml-2 shrink-0">{formatDate(farm.planting_date)}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => viewFarm(farm.id)}
-                        className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium active:bg-gray-200 transition-colors"
-                      >
-                        ดูแผนที่
-                      </button>
-                      <button
-                        onClick={() => editFarm(farm.id)}
-                        className="flex-1 bg-green-50 text-green-700 py-2.5 rounded-xl text-sm font-medium active:bg-green-100 transition-colors"
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        onClick={() => deleteFarm(farm.id)}
-                        className="bg-red-50 text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium active:bg-red-100 transition-colors"
-                      >
-                        ลบ
-                      </button>
+
+                      {/* Disease tags */}
+                      {farm.notification_diseases.length > 0 && (
+                        <div className="flex gap-1.5 mb-3 flex-wrap">
+                          <span className="text-xs text-gray-400 self-center">แจ้งเตือน:</span>
+                          {farm.notification_diseases.includes("blight") && (
+                            <span className="text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-medium">โรคขอบใบแห้ง</span>
+                          )}
+                          {farm.notification_diseases.includes("blast") && (
+                            <span className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded-full font-medium">โรคไหม้</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2 pt-3 border-t border-gray-100">
+                        <button
+                          onClick={() => viewFarm(farm.id)}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium active:bg-gray-200 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                          </svg>
+                          แผนที่
+                        </button>
+                        <button
+                          onClick={() => editFarm(farm.id)}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-green-50 text-green-700 py-2.5 rounded-xl text-sm font-medium active:bg-green-100 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          แก้ไข
+                        </button>
+                        <button
+                          onClick={() => deleteFarm(farm.id)}
+                          className="flex items-center justify-center w-11 bg-red-50 text-red-500 rounded-xl active:bg-red-100 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
