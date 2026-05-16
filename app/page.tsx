@@ -23,7 +23,41 @@ const CONFIG = {
 interface RiceVariety {
   rice_variety: string;
   rice_type: string;
+  sensitivity?: string;
+  planting_month?: number;
+  harvest_month?: number;
 }
+
+type GrowthStage = {
+  label: string;
+  color: string;
+  pct: number;
+  days: number;
+};
+
+const getGrowthStage = (plantingDate: string, sensitivity?: string): GrowthStage | null => {
+  const days = Math.floor((Date.now() - new Date(plantingDate).getTime()) / 86400000);
+  if (days < 0) return null;
+  const total = sensitivity === "ไวแสง" ? 240 : 120;
+  const pct = Math.min(100, Math.round((days / total) * 100));
+  const stages = sensitivity === "ไวแสง"
+    ? [
+        { max: 30, label: "ตกกล้า", color: "bg-green-100 text-green-700" },
+        { max: 90, label: "แตกกอ", color: "bg-emerald-100 text-emerald-700" },
+        { max: 150, label: "ตั้งท้อง", color: "bg-lime-100 text-lime-700" },
+        { max: 200, label: "ออกรวง", color: "bg-yellow-100 text-yellow-700" },
+        { max: 240, label: "ใกล้เก็บเกี่ยว", color: "bg-amber-100 text-amber-700" },
+      ]
+    : [
+        { max: 15, label: "ตกกล้า", color: "bg-green-100 text-green-700" },
+        { max: 45, label: "แตกกอ", color: "bg-emerald-100 text-emerald-700" },
+        { max: 75, label: "ตั้งท้อง", color: "bg-lime-100 text-lime-700" },
+        { max: 105, label: "ออกรวง", color: "bg-yellow-100 text-yellow-700" },
+        { max: 120, label: "ใกล้เก็บเกี่ยว", color: "bg-amber-100 text-amber-700" },
+      ];
+  const stage = stages.find((s) => days <= s.max) ?? { label: "ครบฤดูกาล", color: "bg-gray-100 text-gray-600" };
+  return { label: stage.label, color: stage.color, pct, days };
+};
 
 interface UserProfile {
   displayName: string;
@@ -77,6 +111,7 @@ export default function RiceFitApp() {
   const [farmName, setFarmName] = useState("");
   const [riceType, setRiceType] = useState("");
   const [plantingDate, setPlantingDate] = useState("");
+  const [sensitivity, setSensitivity] = useState<"ไวแสง" | "ไม่ไวแสง">("ไม่ไวแสง");
   const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(false);
   const [notifyBlast, setNotifyBlast] = useState(false);
 
@@ -146,6 +181,7 @@ export default function RiceFitApp() {
         rice_variety: riceType,
         planting_date: plantingDate,
         notification_diseases: diseases,
+        sensitivity,
       };
 
       if (isEditing && editingFarmId) {
@@ -189,6 +225,7 @@ export default function RiceFitApp() {
     setFarmName("");
     setRiceType("");
     setPlantingDate("");
+    setSensitivity("ไม่ไวแสง");
     setNotifyBacterialBlight(false);
     setNotifyBlast(false);
   };
@@ -208,6 +245,7 @@ export default function RiceFitApp() {
       setFarmName(farm.farm_name);
       setRiceType(farm.rice_variety);
       setPlantingDate(farm.planting_date);
+      if (farm.sensitivity) setSensitivity(farm.sensitivity as "ไวแสง" | "ไม่ไวแสง");
       setNotifyBacterialBlight(farm.notification_diseases.includes("blight"));
       setNotifyBlast(farm.notification_diseases.includes("blast"));
       setCurrentScreen("draw");
@@ -485,6 +523,26 @@ export default function RiceFitApp() {
                         </div>
                       )}
 
+                      {/* Growth stage */}
+                      {(() => {
+                        const g = getGrowthStage(farm.planting_date, farm.sensitivity);
+                        if (!g) return null;
+                        return (
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${g.color}`}>{g.label}</span>
+                              <span className="text-xs text-gray-400">ปลูกมา {g.days} วัน</span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all"
+                                style={{ width: `${g.pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Action buttons */}
                       <div className="flex gap-2 pt-3 border-t border-gray-100">
                         <button
@@ -639,7 +697,11 @@ export default function RiceFitApp() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">พันธุ์ข้าว</label>
                 <select
                   value={riceType}
-                  onChange={(e) => setRiceType(e.target.value)}
+                  onChange={(e) => {
+                    setRiceType(e.target.value);
+                    const found = riceVarieties.find((v) => v.rice_variety === e.target.value);
+                    if (found?.sensitivity) setSensitivity(found.sensitivity as "ไวแสง" | "ไม่ไวแสง");
+                  }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all appearance-none bg-white"
                 >
                   <option value="">เลือกพันธุ์ข้าว</option>
@@ -649,6 +711,12 @@ export default function RiceFitApp() {
                     </option>
                   ))}
                 </select>
+                {riceType && sensitivity && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    ประเภท: <span className="font-medium text-gray-600">{sensitivity}</span>
+                    {sensitivity === "ไวแสง" ? " (~8 เดือน)" : " (~4 เดือน)"}
+                  </p>
+                )}
               </div>
 
               {/* Planting Date */}
