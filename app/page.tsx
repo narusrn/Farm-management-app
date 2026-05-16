@@ -165,12 +165,11 @@ export default function RiceFitApp() {
     }
   };
 
-  const deleteFarm = async () => {
-    if (!editingFarmId) return;
+  const deleteFarm = async (farmId: string) => {
     if (!confirm("ต้องการลบแปลงนี้หรือไม่?")) return;
     try {
       setLoading(true);
-      await apiDeleteFarm(editingFarmId, userId || "");
+      await apiDeleteFarm(userId || "", farmId);
       setFarms(await apiFetchFarms(userId || ""));
       showToast("ลบแปลงสำเร็จ");
       resetForm();
@@ -479,6 +478,12 @@ export default function RiceFitApp() {
                       >
                         แก้ไข
                       </button>
+                      <button
+                        onClick={() => deleteFarm(farm.id)}
+                        className="bg-red-50 text-red-600 px-4 py-2.5 rounded-xl text-sm font-medium active:bg-red-100 transition-colors"
+                      >
+                        ลบ
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -682,7 +687,7 @@ export default function RiceFitApp() {
             </button>
             {isEditing && (
               <button
-                onClick={deleteFarm}
+                onClick={() => deleteFarm(editingFarmId!)}
                 className="w-full bg-red-50 text-red-600 py-4 rounded-xl font-medium active:bg-red-100 transition-colors"
               >
                 ลบแปลง
