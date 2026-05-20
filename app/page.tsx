@@ -113,6 +113,7 @@ export default function RiceFitApp() {
   const [sensitivity, setSensitivity] = useState<"ไวแสง" | "ไม่ไวแสง">("ไม่ไวแสง");
   const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(false);
   const [notifyBlast, setNotifyBlast] = useState(false);
+  const [province, setProvince] = useState("");
 
   // Map refs — typed as any because Leaflet is loaded via CDN, not npm
   const drawMapRef = useRef<any>(null);
@@ -151,6 +152,23 @@ export default function RiceFitApp() {
     fetchRiceVarieties();
   }, []);
 
+  const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th`,
+        { headers: { "User-Agent": "FarmManagementApp/1.0" } }
+      );
+      const data = await res.json();
+      const addr = data.address || {};
+      const tambon  = addr.suburb || addr.village || addr.quarter || addr.hamlet || "";
+      const amphoe  = addr.county || addr.city_district || addr.state_district || "";
+      const changwat = (addr.state || "").replace(/^จังหวัด/, "");
+      return [tambon, amphoe, changwat].filter(Boolean).join(", ");
+    } catch {
+      return "";
+    }
+  };
+
   const loadFarms = async (uid?: string) => {
     try {
       const data = await apiFetchFarms(uid || userId || "");
@@ -181,6 +199,7 @@ export default function RiceFitApp() {
         planting_date: plantingDate,
         notification_diseases: diseases,
         sensitivity,
+        province: province || undefined,
       };
 
       if (isEditing && editingFarmId) {
@@ -227,6 +246,7 @@ export default function RiceFitApp() {
     setSensitivity("ไม่ไวแสง");
     setNotifyBacterialBlight(false);
     setNotifyBlast(false);
+    setProvince("");
   };
 
   const viewFarm = (farmId: string) => {
@@ -247,6 +267,7 @@ export default function RiceFitApp() {
       if (farm.sensitivity) setSensitivity(farm.sensitivity as "ไวแสง" | "ไม่ไวแสง");
       setNotifyBacterialBlight(farm.notification_diseases.includes("blight"));
       setNotifyBlast(farm.notification_diseases.includes("blast"));
+      setProvince(farm.province || "");
       setCurrentScreen("draw");
     }
   };
@@ -323,6 +344,7 @@ export default function RiceFitApp() {
           if (mapMarkerRef.current) mapMarkerRef.current.remove();
           mapMarkerRef.current = L.marker([lat, lng]).addTo(map);
           setMarkerLocation([lat, lng]);
+          reverseGeocode(lat, lng).then(setProvince);
         };
 
         map.on("click", (e: any) => placeMarker(e.latlng.lat, e.latlng.lng));
