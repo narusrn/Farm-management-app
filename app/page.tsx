@@ -160,9 +160,10 @@ export default function RiceFitApp() {
       );
       const data = await res.json();
       const addr = data.address || {};
-      const tambon  = addr.suburb || addr.village || addr.quarter || addr.hamlet || "";
-      const amphoe  = addr.county || addr.city_district || addr.state_district || "";
-      const changwat = (addr.state || "").replace(/^จังหวัด/, "");
+      const hasSub = !!addr.neighbourhood;
+      const tambon   = addr.neighbourhood || addr.village || addr.quarter || addr.hamlet || (hasSub ? "" : addr.suburb) || "";
+      const amphoe   = addr.county || addr.city_district || addr.state_district || (hasSub ? addr.suburb : "") || "";
+      const changwat = (addr.state || addr.city || "").replace(/^จังหวัด/, "");
       return [tambon, amphoe, changwat].filter(Boolean).join(", ");
     } catch {
       return "";
