@@ -681,7 +681,12 @@ export default function RiceFitApp() {
             ) : (
               <div className="absolute bottom-24 left-4 right-4 z-[1000] bg-green-50/95 backdrop-blur rounded-xl p-3 shadow-lg text-center">
                 <p className="text-green-700 text-sm font-medium">ปักหมุดแล้ว</p>
-                <p className="text-green-600 text-xs mt-0.5">
+                {province ? (
+                  <p className="text-green-800 text-sm font-semibold mt-0.5">{province}</p>
+                ) : (
+                  <p className="text-green-500 text-xs mt-0.5">กำลังค้นหาที่อยู่...</p>
+                )}
+                <p className="text-green-400 text-xs mt-0.5">
                   {markerLocation[0].toFixed(5)}, {markerLocation[1].toFixed(5)}
                 </p>
               </div>
