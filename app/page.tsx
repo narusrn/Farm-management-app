@@ -1012,7 +1012,7 @@ export default function RiceFitApp() {
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <p className="text-xs text-gray-500 mb-2">
                           🌧 พยากรณ์ฝนรายวัน
-                          <span className="text-gray-400 ml-1">(ECMWF SEAS5)</span>
+                          <span className="text-gray-400 ml-1">(ECMWF SEAS5 · ครอบคลุมสูงสุด 7 เดือน)</span>
                         </p>
                         {/* Stage strip — proportional widths, colors from STAGE_CONFIGS */}
                         <div className="flex mb-0.5">
