@@ -488,7 +488,7 @@ export default function RiceFitApp() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const plantDate = new Date(plantingDate); plantDate.setHours(0, 0, 0, 0);
     const dayOffset = Math.max(0, Math.floor((plantDate.getTime() - today.getTime()) / 86400000));
-    const forecastDays = Math.min(dayOffset + totalDays + 14, 274);
+    const forecastDays = Math.min(dayOffset + totalDays + 14, 214);
     const rainForecastPromise = fetch(
       `https://seasonal-api.open-meteo.com/v1/seasonal?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&daily=precipitation_sum&forecast_days=${forecastDays}&models=ecmwf_seas5_ensemble_mean&timezone=Asia%2FBangkok`
     ).then((r) => (r.ok ? r.json() : null)).catch(() => null);
