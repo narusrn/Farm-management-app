@@ -132,6 +132,7 @@ export default function RiceFitApp() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [planData, setPlanData] = useState<Record<number, any>>({});
   const [planLoading, setPlanLoading] = useState(false);
+  const [precipData, setPrecipData] = useState<Record<string, number>>({});
 
   // Map refs — typed as any because Leaflet is loaded via CDN, not npm
   const drawMapRef = useRef<any>(null);
@@ -268,6 +269,7 @@ export default function RiceFitApp() {
     setProvince("");
     setPlanData({});
     setPlanLoading(false);
+    setPrecipData({});
   };
 
   const viewFarm = (farmId: string) => {
@@ -450,10 +452,11 @@ export default function RiceFitApp() {
     let cancelled = false;
     setPlanLoading(true);
     setPlanData({});
+    setPrecipData({});
 
     const numMonths = sensitivity === "ไวแสง" ? 8 : 4;
 
-    Promise.all(
+    const ricefitPromise = Promise.all(
       Array.from({ length: numMonths }, async (_, i) => {
         const d = new Date(plantingDate);
         d.setMonth(d.getMonth() + i);
@@ -471,12 +474,25 @@ export default function RiceFitApp() {
         } catch {}
         return { i, data: null };
       })
-    ).then((results) => {
+    );
+
+    const precipPromise = fetch(
+      `https://seasonal-api.open-meteo.com/v1/seasonal?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&monthly=precipitation_mean&forecast_months=8`
+    ).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+    Promise.all([ricefitPromise, precipPromise]).then(([ricefitResults, precipJson]) => {
       if (cancelled) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map: Record<number, any> = {};
-      results.forEach((r) => { if (r?.data) map[r.i] = r.data; });
-      setPlanData(map);
+      const riceMap: Record<number, any> = {};
+      ricefitResults.forEach((r) => { if (r?.data) riceMap[r.i] = r.data; });
+
+      const precipMap: Record<string, number> = {};
+      const times: string[] = precipJson?.monthly?.time ?? [];
+      const vals: number[] = precipJson?.monthly?.precipitation_mean ?? [];
+      times.forEach((t, idx) => { precipMap[t.slice(0, 7)] = vals[idx]; });
+
+      setPlanData(riceMap);
+      setPrecipData(precipMap);
       setPlanLoading(false);
     });
 
@@ -864,10 +880,14 @@ export default function RiceFitApp() {
                     const numMonths = sensitivity === "ไวแสง" ? 8 : 4;
                     const thresholds = sensitivity === "ไวแสง" ? [30, 90, 150, 200, 240] : [15, 45, 75, 105, 120];
 
+                    const maxPrecip = Math.max(...Object.values(precipData), 1);
+
                     const cards = Array.from({ length: numMonths }, (_, i) => {
                       const d = new Date(plantingDate);
                       d.setMonth(d.getMonth() + i);
                       const monthLabel = THAI_MONTHS_SHORT[d.getMonth()];
+                      const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                      const precip = precipData[yearMonth];
 
                       const midDay = (i + 0.5) * 30;
                       const foundIdx = thresholds.findIndex((t) => midDay <= t);
@@ -914,6 +934,21 @@ export default function RiceFitApp() {
                               ))
                             )}
                           </div>
+                          {/* Precipitation bar */}
+                          {!planLoading && precip !== undefined && (
+                            <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span style={{ fontSize: 8 }}>🌧</span>
+                                <div className="flex-1 h-1 bg-blue-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-400 rounded-full"
+                                    style={{ width: `${Math.min(precip / maxPrecip, 1) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <p className="text-blue-400 text-center" style={{ fontSize: 8 }}>{Math.round(precip)} มม.</p>
+                            </div>
+                          )}
                         </div>
                       );
                     });
