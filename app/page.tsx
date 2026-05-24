@@ -36,6 +36,19 @@ const STAGE_CONFIGS = [
   { label: "ใกล้เก็บเกี่ยว", emoji: "🍚", badge: "bg-amber-100 text-amber-700",    gradFrom: "#fbbf24", gradTo: "#d97706", dot: "#f59e0b" },
 ];
 
+const THAI_MONTHS_SHORT = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+const PLAN_FACTORS: { key: string; label: string }[] = [
+  { key: "โรคขอบใบแห้ง",   label: "โรคขอบใบ" },
+  { key: "โรคใบไหม้",      label: "โรคไหม้" },
+  { key: "อุณหภูมิสูง",    label: "อุณหภ.สูง" },
+  { key: "อุณหภูมิต่ำ",    label: "อุณหภ.ต่ำ" },
+  { key: "แล้ง",            label: "แล้ง" },
+  { key: "น้ำท่วมฉับพลัน", label: "น้ำท่วม" },
+  { key: "ดินเปรี้ยว",     label: "ดินเปรี้ยว" },
+  { key: "ดินเค็ม",        label: "ดินเค็ม" },
+];
+
 type GrowthStage = {
   label: string;
   badge: string;
@@ -114,6 +127,11 @@ export default function RiceFitApp() {
   const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(false);
   const [notifyBlast, setNotifyBlast] = useState(false);
   const [province, setProvince] = useState("");
+
+  // Crop planning state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [planData, setPlanData] = useState<Record<number, any>>({});
+  const [planLoading, setPlanLoading] = useState(false);
 
   // Map refs — typed as any because Leaflet is loaded via CDN, not npm
   const drawMapRef = useRef<any>(null);
@@ -248,6 +266,8 @@ export default function RiceFitApp() {
     setNotifyBacterialBlight(false);
     setNotifyBlast(false);
     setProvince("");
+    setPlanData({});
+    setPlanLoading(false);
   };
 
   const viewFarm = (farmId: string) => {
@@ -422,6 +442,47 @@ export default function RiceFitApp() {
       if (previewMapRef.current) { previewMapRef.current.remove(); previewMapRef.current = null; }
     };
   }, [currentScreen, leafletLoaded, currentFarm]);
+
+  // Fetch ricefit data for each month of the crop period when form is shown
+  useEffect(() => {
+    if (currentScreen !== "form" || !plantingDate || !riceType || !markerLocation) return;
+
+    let cancelled = false;
+    setPlanLoading(true);
+    setPlanData({});
+
+    const numMonths = sensitivity === "ไวแสง" ? 8 : 4;
+
+    Promise.all(
+      Array.from({ length: numMonths }, async (_, i) => {
+        const d = new Date(plantingDate);
+        d.setMonth(d.getMonth() + i);
+        const params = new URLSearchParams({
+          lat: String(markerLocation[0]),
+          lon: String(markerLocation[1]),
+          rice_variety: riceType,
+          sensitivity,
+          month: String(d.getMonth() + 1),
+          start_date: plantingDate,
+        });
+        try {
+          const res = await fetch(`/api/ricefit?${params}`);
+          if (res.ok) return { i, data: await res.json() };
+        } catch {}
+        return { i, data: null };
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map: Record<number, any> = {};
+      results.forEach((r) => { if (r?.data) map[r.i] = r.data; });
+      setPlanData(map);
+      setPlanLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScreen, plantingDate, riceType, sensitivity]);
 
   const clearMarker = () => {
     if (mapMarkerRef.current) { mapMarkerRef.current.remove(); mapMarkerRef.current = null; }
@@ -785,6 +846,115 @@ export default function RiceFitApp() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                 />
               </div>
+
+              {/* Crop Planning Panel */}
+              {plantingDate && riceType && (
+                <div className="bg-white rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-700">แผนฤดูกาล</h3>
+                    {planLoading && (
+                      <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <span className="w-3 h-3 border-2 border-gray-200 border-t-green-400 rounded-full animate-spin" />
+                        โหลดข้อมูล
+                      </span>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const numMonths = sensitivity === "ไวแสง" ? 8 : 4;
+                    const thresholds = sensitivity === "ไวแสง" ? [30, 90, 150, 200, 240] : [15, 45, 75, 105, 120];
+
+                    const cards = Array.from({ length: numMonths }, (_, i) => {
+                      const d = new Date(plantingDate);
+                      d.setMonth(d.getMonth() + i);
+                      const monthLabel = THAI_MONTHS_SHORT[d.getMonth()];
+
+                      const midDay = (i + 0.5) * 30;
+                      const foundIdx = thresholds.findIndex((t) => midDay <= t);
+                      const stageIdx = foundIdx === -1 ? 4 : foundIdx;
+                      const stage = STAGE_CONFIGS[stageIdx];
+
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const riskRaw: Record<string, any> | null = planData[i]?.["ระดับความเสี่ยง"]?.[0] ?? null;
+                      const risks = riskRaw
+                        ? PLAN_FACTORS
+                            .map((f) => ({ ...f, level: Number(riskRaw[f.key] ?? 0) }))
+                            .filter((f) => f.level >= 2)
+                            .sort((a, b) => b.level - a.level)
+                            .slice(0, 2)
+                        : [];
+                      const maxRisk = riskRaw
+                        ? Math.max(...PLAN_FACTORS.map((f) => Number(riskRaw[f.key] ?? 0)))
+                        : 0;
+
+                      const borderColor = planLoading
+                        ? "border-gray-200"
+                        : maxRisk >= 4 ? "border-red-400"
+                        : maxRisk >= 3 ? "border-orange-400"
+                        : maxRisk >= 2 ? "border-yellow-400"
+                        : "border-green-300";
+
+                      return (
+                        <div key={i} className={`w-[84px] shrink-0 border-2 ${borderColor} rounded-xl p-2`}>
+                          <p className="text-xs font-bold text-center text-gray-600">{monthLabel}</p>
+                          <p className="text-xl text-center my-1">{stage.emoji}</p>
+                          <p className="text-center text-gray-400 leading-tight mb-2" style={{ fontSize: 9 }}>{stage.label}</p>
+                          <div className="border-t border-gray-100 pt-1.5 min-h-[28px] space-y-0.5">
+                            {planLoading ? (
+                              <div className="h-3 bg-gray-100 rounded animate-pulse" />
+                            ) : !riskRaw ? (
+                              <p className="text-center text-gray-300" style={{ fontSize: 9 }}>-</p>
+                            ) : risks.length === 0 ? (
+                              <p className="text-center text-green-500" style={{ fontSize: 9 }}>✅ ปลอดภัย</p>
+                            ) : (
+                              risks.map((f) => (
+                                <p key={f.key} className="text-gray-600 leading-tight" style={{ fontSize: 9 }}>
+                                  {f.level >= 4 ? "🔴" : f.level >= 3 ? "🟠" : "🟡"} {f.label}
+                                </p>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+
+                    // Warning summary: factors with level >= 3, grouped with months
+                    const warningSummary = !planLoading && Object.keys(planData).length > 0
+                      ? (() => {
+                          const factorMonths: Record<string, string[]> = {};
+                          Array.from({ length: numMonths }, (_, i) => {
+                            const d = new Date(plantingDate);
+                            d.setMonth(d.getMonth() + i);
+                            const ml = THAI_MONTHS_SHORT[d.getMonth()];
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const rr: Record<string, any> = planData[i]?.["ระดับความเสี่ยง"]?.[0] ?? {};
+                            PLAN_FACTORS.forEach((f) => {
+                              if (Number(rr[f.key] ?? 0) >= 3) {
+                                (factorMonths[f.label] ??= []).push(ml);
+                              }
+                            });
+                          });
+                          if (Object.keys(factorMonths).length === 0) return null;
+                          return (
+                            <p className="text-xs text-orange-600 mt-3 pt-3 border-t border-gray-100 leading-relaxed">
+                              ⚠️ ต้องระวัง:{" "}
+                              {Object.entries(factorMonths)
+                                .map(([k, v]) => `${k} (${v.join(", ")})`)
+                                .join(" · ")}
+                            </p>
+                          );
+                        })()
+                      : null;
+
+                    return (
+                      <>
+                        <div className="flex gap-2 overflow-x-auto pb-1">{cards}</div>
+                        {warningSummary}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Disease Notifications */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
