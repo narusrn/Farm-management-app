@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
-import { BarChart, Bar, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, Cell, YAxis, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getUser } from "@/app/api/routes/user";
 import {
   getFarms as apiFetchFarms,
@@ -134,7 +134,7 @@ export default function RiceFitApp() {
   const [planData, setPlanData] = useState<Record<number, any>>({});
   const [planLoading, setPlanLoading] = useState(false);
   const [precipData, setPrecipData] = useState<Record<string, number>>({});
-  const [dailyPrecip, setDailyPrecip] = useState<{ day: number; precip: number; ml: string }[]>([]);
+  const [dailyPrecip, setDailyPrecip] = useState<{ day: number; precip: number; ml: string; stageIdx: number }[]>([]);
 
   // Map refs — typed as any because Leaflet is loaded via CDN, not npm
   const drawMapRef = useRef<any>(null);
@@ -483,18 +483,17 @@ export default function RiceFitApp() {
       `https://seasonal-api.open-meteo.com/v1/seasonal?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&monthly=precipitation_mean&forecast_months=8`
     ).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
-    // ERA5 historical — last year's equivalent of the crop period for daily reference
+    // Seasonal forecast — daily precipitation for the crop period ahead
     const totalDays = sensitivity === "ไวแสง" ? 240 : 120;
-    const refStart = new Date(plantingDate);
-    refStart.setFullYear(refStart.getFullYear() - 1);
-    const refEnd = new Date(refStart);
-    refEnd.setDate(refEnd.getDate() + totalDays - 1);
-    const toISO = (d: Date) => d.toISOString().split("T")[0];
-    const era5Promise = fetch(
-      `https://archive-api.open-meteo.com/v1/era5?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&start_date=${toISO(refStart)}&end_date=${toISO(refEnd)}&daily=precipitation_sum&timezone=Asia%2FBangkok`
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const plantDate = new Date(plantingDate); plantDate.setHours(0, 0, 0, 0);
+    const dayOffset = Math.max(0, Math.floor((plantDate.getTime() - today.getTime()) / 86400000));
+    const forecastDays = Math.min(dayOffset + totalDays + 14, 274);
+    const rainForecastPromise = fetch(
+      `https://seasonal-api.open-meteo.com/v1/seasonal?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&daily=precipitation_sum&forecast_days=${forecastDays}&models=ecmwf_seas5_ensemble_mean&timezone=Asia%2FBangkok`
     ).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
-    Promise.all([ricefitPromise, precipPromise, era5Promise]).then(([ricefitResults, precipJson, era5Json]) => {
+    Promise.all([ricefitPromise, precipPromise, rainForecastPromise]).then(([ricefitResults, precipJson, rainJson]) => {
       if (cancelled) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const riceMap: Record<number, any> = {};
@@ -505,13 +504,16 @@ export default function RiceFitApp() {
       const mVals: number[] = precipJson?.monthly?.precipitation_mean ?? [];
       mTimes.forEach((t, idx) => { precipMap[t.slice(0, 7)] = mVals[idx]; });
 
-      const era5Times: string[] = era5Json?.daily?.time ?? [];
-      const era5Sums: number[] = era5Json?.daily?.precipitation_sum ?? [];
-      const dailyArr = era5Times.map((t, idx) => ({
-        day: idx,
-        precip: era5Sums[idx] ?? 0,
-        ml: THAI_MONTHS_SHORT[new Date(t).getMonth()],
-      }));
+      const allTimes: string[] = rainJson?.daily?.time ?? [];
+      const allSums: number[] = rainJson?.daily?.precipitation_sum ?? [];
+      const startIdx = Math.max(0, allTimes.findIndex((t) => t >= plantingDate));
+      const cropTimes = allTimes.slice(startIdx, startIdx + totalDays);
+      const cropSums = allSums.slice(startIdx, startIdx + totalDays);
+      const thr = sensitivity === "ไวแสง" ? [30, 90, 150, 200, 240] : [15, 45, 75, 105, 120];
+      const dailyArr = cropTimes.map((t, idx) => {
+        const fi = thr.findIndex((th) => idx <= th);
+        return { day: idx, precip: cropSums[idx] ?? 0, ml: THAI_MONTHS_SHORT[new Date(t).getMonth()], stageIdx: fi === -1 ? 4 : fi };
+      });
 
       setPlanData(riceMap);
       setPrecipData(precipMap);
@@ -1004,25 +1006,24 @@ export default function RiceFitApp() {
                         })()
                       : null;
 
-                    // Daily rainfall chart with growth stage bands
-                    const stageBgs = ["#bbf7d0", "#a7f3d0", "#d9f99d", "#fef08a", "#fde68a"];
+                    // Daily rainfall chart — bars colored by growth stage (same system as farm cards)
                     const total = thresholds[thresholds.length - 1];
                     const dailyChart = dailyPrecip.length > 0 ? (
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <p className="text-xs text-gray-500 mb-2">
-                          🌧 ปริมาณน้ำฝนรายวัน
-                          <span className="text-gray-400 ml-1">(อ้างอิงปีที่แล้ว)</span>
+                          🌧 พยากรณ์ฝนรายวัน
+                          <span className="text-gray-400 ml-1">(ECMWF SEAS5)</span>
                         </p>
-                        {/* Growth stage strip aligned with Y-axis width */}
+                        {/* Stage strip — proportional widths, colors from STAGE_CONFIGS */}
                         <div className="flex mb-0.5">
-                          <div style={{ width: 16 }} />
+                          <div style={{ width: 20 }} />
                           <div className="flex flex-1 overflow-hidden rounded-sm" style={{ height: 16 }}>
                             {thresholds.map((end, i) => {
                               const start = i === 0 ? 0 : thresholds[i - 1];
                               return (
                                 <div
                                   key={i}
-                                  style={{ width: `${((end - start) / total) * 100}%`, backgroundColor: stageBgs[i] }}
+                                  style={{ width: `${((end - start) / total) * 100}%`, backgroundColor: STAGE_CONFIGS[i].dot + "55" }}
                                   className="flex items-center justify-center shrink-0"
                                 >
                                   <span style={{ fontSize: 9 }}>{STAGE_CONFIGS[i].emoji}</span>
@@ -1031,25 +1032,40 @@ export default function RiceFitApp() {
                             })}
                           </div>
                         </div>
-                        <ResponsiveContainer width="100%" height={90}>
-                          <BarChart data={dailyPrecip} margin={{ top: 0, right: 0, bottom: 0, left: 16 }} barCategoryGap={0}>
-                            <YAxis width={16} tick={{ fontSize: 7 }} tickLine={false} axisLine={false} tickCount={3} />
+                        <ResponsiveContainer width="100%" height={100}>
+                          <BarChart data={dailyPrecip} margin={{ top: 2, right: 0, bottom: 12, left: 20 }} barCategoryGap={0}>
+                            <YAxis width={20} tick={{ fontSize: 7 }} tickLine={false} axisLine={false} tickCount={3} unit=" มม." />
+                            <XAxis
+                              dataKey="day"
+                              type="number"
+                              domain={[0, dailyPrecip.length - 1]}
+                              ticks={thresholds.slice(0, -1)}
+                              tickFormatter={(d) => dailyPrecip[d]?.ml ?? ""}
+                              tick={{ fontSize: 7 }}
+                              tickLine={false}
+                              axisLine={false}
+                              interval={0}
+                            />
                             <Tooltip
                               cursor={{ fill: "rgba(0,0,0,0.04)" }}
-                              formatter={(v: unknown) => [`${(v as number).toFixed(1)} มม.`, "ฝน"]}
+                              formatter={(v: unknown, _, props) => {
+                                const s = STAGE_CONFIGS[(props.payload as { stageIdx: number }).stageIdx];
+                                return [`${(v as number).toFixed(1)} มม.`, `${s.emoji} ${s.label}`];
+                              }}
                               labelFormatter={(_, payload) => (payload?.[0]?.payload as { ml: string })?.ml ?? ""}
                               contentStyle={{ fontSize: 10, padding: "2px 8px", borderRadius: 6 }}
                             />
-                            <Bar dataKey="precip" fill="#60a5fa" radius={[1, 1, 0, 0]} isAnimationActive={false} />
+                            <Bar dataKey="precip" radius={[1, 1, 0, 0]} isAnimationActive={false}>
+                              {dailyPrecip.map((entry, idx) => (
+                                <Cell key={idx} fill={STAGE_CONFIGS[entry.stageIdx].dot} fillOpacity={0.75} />
+                              ))}
+                            </Bar>
                           </BarChart>
                         </ResponsiveContainer>
-                        <div className="flex gap-2 flex-wrap justify-center mt-1">
+                        <div className="flex gap-2 flex-wrap justify-center -mt-2">
                           {STAGE_CONFIGS.map((s, i) => (
                             <span key={i} className="flex items-center gap-0.5" style={{ fontSize: 9 }}>
-                              <span
-                                className="inline-block w-2 h-2 rounded-sm"
-                                style={{ backgroundColor: stageBgs[i] }}
-                              />
+                              <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: s.dot }} />
                               <span className="text-gray-500">{s.label}</span>
                             </span>
                           ))}
