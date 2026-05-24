@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import { BarChart, Bar, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getUser } from "@/app/api/routes/user";
 import {
   getFarms as apiFetchFarms,
@@ -133,6 +134,7 @@ export default function RiceFitApp() {
   const [planData, setPlanData] = useState<Record<number, any>>({});
   const [planLoading, setPlanLoading] = useState(false);
   const [precipData, setPrecipData] = useState<Record<string, number>>({});
+  const [dailyPrecip, setDailyPrecip] = useState<{ day: number; precip: number; ml: string }[]>([]);
 
   // Map refs — typed as any because Leaflet is loaded via CDN, not npm
   const drawMapRef = useRef<any>(null);
@@ -270,6 +272,7 @@ export default function RiceFitApp() {
     setPlanData({});
     setPlanLoading(false);
     setPrecipData({});
+    setDailyPrecip([]);
   };
 
   const viewFarm = (farmId: string) => {
@@ -480,19 +483,39 @@ export default function RiceFitApp() {
       `https://seasonal-api.open-meteo.com/v1/seasonal?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&monthly=precipitation_mean&forecast_months=8`
     ).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
-    Promise.all([ricefitPromise, precipPromise]).then(([ricefitResults, precipJson]) => {
+    // ERA5 historical — last year's equivalent of the crop period for daily reference
+    const totalDays = sensitivity === "ไวแสง" ? 240 : 120;
+    const refStart = new Date(plantingDate);
+    refStart.setFullYear(refStart.getFullYear() - 1);
+    const refEnd = new Date(refStart);
+    refEnd.setDate(refEnd.getDate() + totalDays - 1);
+    const toISO = (d: Date) => d.toISOString().split("T")[0];
+    const era5Promise = fetch(
+      `https://archive-api.open-meteo.com/v1/era5?latitude=${markerLocation[0]}&longitude=${markerLocation[1]}&start_date=${toISO(refStart)}&end_date=${toISO(refEnd)}&daily=precipitation_sum&timezone=Asia%2FBangkok`
+    ).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+    Promise.all([ricefitPromise, precipPromise, era5Promise]).then(([ricefitResults, precipJson, era5Json]) => {
       if (cancelled) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const riceMap: Record<number, any> = {};
       ricefitResults.forEach((r) => { if (r?.data) riceMap[r.i] = r.data; });
 
       const precipMap: Record<string, number> = {};
-      const times: string[] = precipJson?.monthly?.time ?? [];
-      const vals: number[] = precipJson?.monthly?.precipitation_mean ?? [];
-      times.forEach((t, idx) => { precipMap[t.slice(0, 7)] = vals[idx]; });
+      const mTimes: string[] = precipJson?.monthly?.time ?? [];
+      const mVals: number[] = precipJson?.monthly?.precipitation_mean ?? [];
+      mTimes.forEach((t, idx) => { precipMap[t.slice(0, 7)] = mVals[idx]; });
+
+      const era5Times: string[] = era5Json?.daily?.time ?? [];
+      const era5Sums: number[] = era5Json?.daily?.precipitation_sum ?? [];
+      const dailyArr = era5Times.map((t, idx) => ({
+        day: idx,
+        precip: era5Sums[idx] ?? 0,
+        ml: THAI_MONTHS_SHORT[new Date(t).getMonth()],
+      }));
 
       setPlanData(riceMap);
       setPrecipData(precipMap);
+      setDailyPrecip(dailyArr);
       setPlanLoading(false);
     });
 
@@ -981,10 +1004,64 @@ export default function RiceFitApp() {
                         })()
                       : null;
 
+                    // Daily rainfall chart with growth stage bands
+                    const stageBgs = ["#bbf7d0", "#a7f3d0", "#d9f99d", "#fef08a", "#fde68a"];
+                    const total = thresholds[thresholds.length - 1];
+                    const dailyChart = dailyPrecip.length > 0 ? (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs text-gray-500 mb-2">
+                          🌧 ปริมาณน้ำฝนรายวัน
+                          <span className="text-gray-400 ml-1">(อ้างอิงปีที่แล้ว)</span>
+                        </p>
+                        {/* Growth stage strip aligned with Y-axis width */}
+                        <div className="flex mb-0.5">
+                          <div style={{ width: 16 }} />
+                          <div className="flex flex-1 overflow-hidden rounded-sm" style={{ height: 16 }}>
+                            {thresholds.map((end, i) => {
+                              const start = i === 0 ? 0 : thresholds[i - 1];
+                              return (
+                                <div
+                                  key={i}
+                                  style={{ width: `${((end - start) / total) * 100}%`, backgroundColor: stageBgs[i] }}
+                                  className="flex items-center justify-center shrink-0"
+                                >
+                                  <span style={{ fontSize: 9 }}>{STAGE_CONFIGS[i].emoji}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <ResponsiveContainer width="100%" height={90}>
+                          <BarChart data={dailyPrecip} margin={{ top: 0, right: 0, bottom: 0, left: 16 }} barCategoryGap={0}>
+                            <YAxis width={16} tick={{ fontSize: 7 }} tickLine={false} axisLine={false} tickCount={3} />
+                            <Tooltip
+                              cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                              formatter={(v: unknown) => [`${(v as number).toFixed(1)} มม.`, "ฝน"]}
+                              labelFormatter={(_, payload) => (payload?.[0]?.payload as { ml: string })?.ml ?? ""}
+                              contentStyle={{ fontSize: 10, padding: "2px 8px", borderRadius: 6 }}
+                            />
+                            <Bar dataKey="precip" fill="#60a5fa" radius={[1, 1, 0, 0]} isAnimationActive={false} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                        <div className="flex gap-2 flex-wrap justify-center mt-1">
+                          {STAGE_CONFIGS.map((s, i) => (
+                            <span key={i} className="flex items-center gap-0.5" style={{ fontSize: 9 }}>
+                              <span
+                                className="inline-block w-2 h-2 rounded-sm"
+                                style={{ backgroundColor: stageBgs[i] }}
+                              />
+                              <span className="text-gray-500">{s.label}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+
                     return (
                       <>
                         <div className="flex gap-2 overflow-x-auto pb-1">{cards}</div>
                         {warningSummary}
+                        {dailyChart}
                       </>
                     );
                   })()}
