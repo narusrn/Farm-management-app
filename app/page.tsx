@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
-import { BarChart, Bar, Cell, YAxis, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, YAxis, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getUser } from "@/app/api/routes/user";
 import {
   getFarms as apiFetchFarms,
@@ -1033,7 +1033,13 @@ export default function RiceFitApp() {
                           </div>
                         </div>
                         <ResponsiveContainer width="100%" height={100}>
-                          <BarChart data={dailyPrecip} margin={{ top: 2, right: 0, bottom: 12, left: 20 }} barCategoryGap={0}>
+                          <AreaChart data={dailyPrecip} margin={{ top: 2, right: 0, bottom: 12, left: 20 }}>
+                            <defs>
+                              <linearGradient id="rainGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
+                              </linearGradient>
+                            </defs>
                             <YAxis width={20} tick={{ fontSize: 7 }} tickLine={false} axisLine={false} tickCount={3} unit=" มม." />
                             <XAxis
                               dataKey="day"
@@ -1047,7 +1053,7 @@ export default function RiceFitApp() {
                               interval={0}
                             />
                             <Tooltip
-                              cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                              cursor={{ stroke: "rgba(0,0,0,0.15)", strokeWidth: 1 }}
                               formatter={(v: unknown, _, props) => {
                                 const s = STAGE_CONFIGS[(props.payload as { stageIdx: number }).stageIdx];
                                 return [`${(v as number).toFixed(1)} มม.`, `${s.emoji} ${s.label}`];
@@ -1055,12 +1061,16 @@ export default function RiceFitApp() {
                               labelFormatter={(_, payload) => (payload?.[0]?.payload as { ml: string })?.ml ?? ""}
                               contentStyle={{ fontSize: 10, padding: "2px 8px", borderRadius: 6 }}
                             />
-                            <Bar dataKey="precip" radius={[1, 1, 0, 0]} isAnimationActive={false}>
-                              {dailyPrecip.map((entry, idx) => (
-                                <Cell key={idx} fill={STAGE_CONFIGS[entry.stageIdx].dot} fillOpacity={0.75} />
-                              ))}
-                            </Bar>
-                          </BarChart>
+                            <Area
+                              type="monotone"
+                              dataKey="precip"
+                              stroke="#3b82f6"
+                              strokeWidth={1.5}
+                              fill="url(#rainGrad)"
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </AreaChart>
                         </ResponsiveContainer>
                         <div className="flex gap-2 flex-wrap justify-center -mt-2">
                           {STAGE_CONFIGS.map((s, i) => (

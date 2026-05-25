@@ -15,7 +15,7 @@ import json
 import requests
 from datetime import datetime, date
 
-from messages import LIFF_URL, build_farm_bubble, build_ricefit_bubble
+from messages import LIFF_URL, build_farm_bubble, build_ricefit_bubble, build_monthly_risk_matrix
 
 # ─── Config ────────────────────────────────────────────────────────────────────
 NECTEC_BASE_URL = os.getenv(
@@ -126,6 +126,60 @@ def build_check_result_messages(user_id: str, farm_index: int, check_type: str) 
     return [
         {"type": "text", "text": f"📊 ผล{label}ของแปลง \"{farm_name}\" ครับ"},
         {"type": "flex", "altText": f"ผล{label} {farm_name}", "contents": result_bubble},
+    ]
+
+
+# ─── Monthly risk matrix ────────────────────────────────────────────────────────
+
+def fetch_monthly_ricefit(farm: dict, num_months: int) -> list:
+    from concurrent.futures import ThreadPoolExecutor
+    planting_date = farm.get("planting_date") or date.today().strftime("%Y-%m-%d")
+    try:
+        start_dt = datetime.strptime(planting_date, "%Y-%m-%d")
+    except Exception:
+        start_dt = datetime.today()
+
+    def _fetch(i):
+        total_m = start_dt.month - 1 + i
+        month   = total_m % 12 + 1
+        params  = [
+            ("lat",          farm.get("latitude")),
+            ("lon",          farm.get("longitude")),
+            ("rice_variety", farm.get("rice_variety") or "กข51"),
+            ("sensitivity",  farm.get("sensitivity") or "ไม่ไวแสง"),
+            ("month",        month),
+            ("start_date",   planting_date),
+        ] + [("factors", f) for f in ALL_FACTORS]
+        try:
+            res = requests.get(
+                f"{NECTEC_BASE_URL}/ricefit",
+                headers={"accept": "application/json", "apikey": NECTEC_API_KEY},
+                params=params, timeout=15,
+            )
+            return res.json() if res.ok else {}
+        except Exception:
+            return {}
+
+    with ThreadPoolExecutor(max_workers=num_months) as ex:
+        return list(ex.map(_fetch, range(num_months)))
+
+
+def build_monthly_risk_messages(user_id: str, farm_index: int) -> list:
+    farms = get_farms(user_id)
+    if not farms:
+        return [{"type": "text", "text": "ไม่พบข้อมูลแปลงนาครับ"}]
+
+    farm        = farms[min(farm_index, len(farms) - 1)]
+    farm_name   = farm.get("farm_name") or "ไม่ระบุชื่อ"
+    sensitivity = farm.get("sensitivity") or "ไม่ไวแสง"
+    num_months  = 8 if sensitivity == "ไวแสง" else 4
+
+    print(f"[INFO] กำลังดึง ricefit {num_months} เดือนสำหรับ '{farm_name}'...")
+    monthly_data = fetch_monthly_ricefit(farm, num_months)
+    contents     = build_monthly_risk_matrix(farm, monthly_data)
+    return [
+        {"type": "text", "text": f"📊 ความเสี่ยงรายเดือนตลอด crop period ของแปลง \"{farm_name}\" ครับ"},
+        {"type": "flex", "altText": f"ความเสี่ยงรายเดือน {farm_name}", "contents": contents},
     ]
 
 
