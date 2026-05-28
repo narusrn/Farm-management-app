@@ -80,16 +80,16 @@ interface UserProfile {
 type Screen = "farms" | "draw" | "form" | "preview";
 
 const FALLBACK_RICE_VARIETIES: RiceVariety[] = [
-  { rice_variety: "ข้าวหอมมะลิ 105", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "กข6", rice_type: "ข้าวเหนียว" },
-  { rice_variety: "กข15", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "กข21", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "กข41", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "กข47", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "กข49", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "ชัยนาท 1", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "สุพรรณบุรี 1", rice_type: "ข้าวเจ้า" },
-  { rice_variety: "อื่นๆ", rice_type: "" },
+  { rice_variety: "ข้าวหอมมะลิ 105", rice_type: "ข้าวเจ้า",   sensitivity: "ไวแสง" },
+  { rice_variety: "กข6",              rice_type: "ข้าวเหนียว", sensitivity: "ไวแสง" },
+  { rice_variety: "กข15",             rice_type: "ข้าวเจ้า",   sensitivity: "ไวแสง" },
+  { rice_variety: "กข21",             rice_type: "ข้าวเจ้า",   sensitivity: "ไม่ไวแสง" },
+  { rice_variety: "กข41",             rice_type: "ข้าวเจ้า",   sensitivity: "ไม่ไวแสง" },
+  { rice_variety: "กข47",             rice_type: "ข้าวเจ้า",   sensitivity: "ไม่ไวแสง" },
+  { rice_variety: "กข49",             rice_type: "ข้าวเจ้า",   sensitivity: "ไม่ไวแสง" },
+  { rice_variety: "ชัยนาท 1",         rice_type: "ข้าวเจ้า",   sensitivity: "ไม่ไวแสง" },
+  { rice_variety: "สุพรรณบุรี 1",     rice_type: "ข้าวเจ้า",   sensitivity: "ไม่ไวแสง" },
+  { rice_variety: "อื่นๆ",            rice_type: "" },
 ];
 
 declare global {
@@ -917,7 +917,14 @@ export default function RiceFitApp() {
                             className="w-full text-left px-4 py-3 hover:bg-green-50 active:bg-green-100 border-b border-gray-100 last:border-0 flex items-center justify-between"
                           >
                             <span className="text-sm font-medium text-gray-800">{v.rice_variety}</span>
-                            {v.rice_type && <span className="text-xs text-gray-400">{v.rice_type}</span>}
+                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                              {v.rice_type && <span className="text-xs text-gray-400">{v.rice_type}</span>}
+                              {v.sensitivity && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${v.sensitivity === "ไวแสง" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                                  {v.sensitivity}
+                                </span>
+                              )}
+                            </div>
                           </button>
                         ))}
                       </div>
