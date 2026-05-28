@@ -123,6 +123,8 @@ export default function RiceFitApp() {
   // Form state
   const [farmName, setFarmName] = useState("");
   const [riceType, setRiceType] = useState("");
+  const [riceQuery, setRiceQuery] = useState("");
+  const [showRiceSuggestions, setShowRiceSuggestions] = useState(false);
   const [plantingDate, setPlantingDate] = useState("");
   const [sensitivity, setSensitivity] = useState<"ไวแสง" | "ไม่ไวแสง">("ไม่ไวแสง");
   const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(true);
@@ -264,6 +266,7 @@ export default function RiceFitApp() {
     setMarkerLocation(null);
     setFarmName("");
     setRiceType("");
+    setRiceQuery("");
     setPlantingDate("");
     setSensitivity("ไม่ไวแสง");
     setNotifyBacterialBlight(true);
@@ -289,6 +292,7 @@ export default function RiceFitApp() {
       setMarkerLocation([farm.latitude, farm.longitude]);
       setFarmName(farm.farm_name);
       setRiceType(farm.rice_variety);
+      setRiceQuery(farm.rice_variety);
       setPlantingDate(farm.planting_date);
       if (farm.sensitivity) setSensitivity(farm.sensitivity as "ไวแสง" | "ไม่ไวแสง");
       setNotifyBacterialBlight(farm.notification_diseases.includes("blight"));
@@ -879,22 +883,47 @@ export default function RiceFitApp() {
               {/* Rice Type */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <label className="block text-sm font-medium text-gray-700 mb-2">พันธุ์ข้าว</label>
-                <select
-                  value={riceType}
-                  onChange={(e) => {
-                    setRiceType(e.target.value);
-                    const found = riceVarieties.find((v) => v.rice_variety === e.target.value);
-                    if (found?.sensitivity) setSensitivity(found.sensitivity as "ไวแสง" | "ไม่ไวแสง");
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all appearance-none bg-white"
-                >
-                  <option value="">เลือกพันธุ์ข้าว</option>
-                  {riceVarieties.map((v) => (
-                    <option key={v.rice_variety} value={v.rice_variety}>
-                      {v.rice_variety}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={riceQuery}
+                    onChange={(e) => {
+                      setRiceQuery(e.target.value);
+                      setRiceType(e.target.value);
+                      setShowRiceSuggestions(true);
+                    }}
+                    onFocus={() => setShowRiceSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowRiceSuggestions(false), 150)}
+                    placeholder="พิมพ์ค้นหาหรือระบุพันธุ์ข้าว..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                  />
+                  {showRiceSuggestions && (() => {
+                    const q = riceQuery.trim();
+                    const filtered = q
+                      ? riceVarieties.filter((v) => v.rice_variety.toLowerCase().includes(q.toLowerCase()))
+                      : riceVarieties;
+                    return filtered.length > 0 ? (
+                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                        {filtered.map((v) => (
+                          <button
+                            key={v.rice_variety}
+                            type="button"
+                            onMouseDown={() => {
+                              setRiceType(v.rice_variety);
+                              setRiceQuery(v.rice_variety);
+                              setShowRiceSuggestions(false);
+                              if (v.sensitivity) setSensitivity(v.sensitivity as "ไวแสง" | "ไม่ไวแสง");
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-green-50 active:bg-green-100 border-b border-gray-100 last:border-0 flex items-center justify-between"
+                          >
+                            <span className="text-sm font-medium text-gray-800">{v.rice_variety}</span>
+                            {v.rice_type && <span className="text-xs text-gray-400">{v.rice_type}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
                 {riceType && sensitivity && (
                   <p className="text-xs text-gray-400 mt-2">
                     ประเภท: <span className="font-medium text-gray-600">{sensitivity}</span>
