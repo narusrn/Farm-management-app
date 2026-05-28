@@ -125,8 +125,8 @@ export default function RiceFitApp() {
   const [riceType, setRiceType] = useState("");
   const [plantingDate, setPlantingDate] = useState("");
   const [sensitivity, setSensitivity] = useState<"ไวแสง" | "ไม่ไวแสง">("ไม่ไวแสง");
-  const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(false);
-  const [notifyBlast, setNotifyBlast] = useState(false);
+  const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(true);
+  const [notifyBlast, setNotifyBlast] = useState(true);
   const [province, setProvince] = useState("");
 
   // Crop planning state
