@@ -672,16 +672,28 @@ export default function RiceFitApp() {
                               <span className="text-xs text-gray-400">ปลูกมา {g.days} วัน</span>
                             </div>
                             <div className="flex items-center">
-                              {STAGE_CONFIGS.map((cfg, i) => (
+                              {STAGE_CONFIGS.map((cfg, i) => {
+                                const isCurrent = i === g.stageIndex;
+                                const isPast    = i < g.stageIndex;
+                                const isFuture  = i > g.stageIndex;
+                                const emojiSize = isCurrent ? 22 : isPast ? 10 + i * 2 : 10;
+                                return (
                                 <div key={i} className="flex items-center" style={{ flex: i < 4 ? "1" : "0" }}>
                                   <div className="flex flex-col items-center" style={{ width: 32 }}>
                                     <span
-                                      className="text-base transition-all"
-                                      style={{ opacity: i <= g.stageIndex ? 1 : 0.2, transform: i === g.stageIndex ? "scale(1.3)" : "scale(1)" }}
+                                      className="transition-all leading-none"
+                                      style={{
+                                        fontSize: emojiSize,
+                                        opacity: isFuture ? 0.2 : 1,
+                                        display: "block",
+                                        textAlign: "center",
+                                        minHeight: 24,
+                                        lineHeight: isCurrent ? "24px" : `${Math.max(emojiSize + 2, 24)}px`,
+                                      }}
                                     >
                                       {cfg.emoji}
                                     </span>
-                                    <span className="text-center mt-0.5 leading-tight text-gray-400" style={{ fontSize: 8, width: 32 }}>{cfg.label}</span>
+                                    <span className="text-center leading-tight text-gray-400" style={{ fontSize: 8, width: 32, marginTop: isCurrent ? 2 : 0 }}>{cfg.label}</span>
                                   </div>
                                   {i < 4 && (
                                     <div
@@ -690,7 +702,8 @@ export default function RiceFitApp() {
                                     />
                                   )}
                                 </div>
-                              ))}
+                              );
+                              })}
                             </div>
                           </div>
                         );
