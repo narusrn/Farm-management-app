@@ -676,18 +676,18 @@ export default function RiceFitApp() {
                                 const isCurrent = i === g.stageIndex;
                                 const isPast    = i < g.stageIndex;
                                 const isFuture  = i > g.stageIndex;
-                                const emojiSize = isCurrent ? 30 : isPast ? 14 + i * 2 : 14;
+                                const emojiSize = isCurrent ? 38 : isPast ? 18 + i * 3 : 18;
                                 return (
                                 <div key={i} className="flex items-center" style={{ flex: i < 4 ? "1" : "0" }}>
-                                  <div className="flex flex-col items-center" style={{ width: 40 }}>
+                                  <div className="flex flex-col items-center" style={{ width: 52 }}>
                                     {isCurrent ? (
                                       <div style={{
-                                        width: 46, height: 46,
+                                        width: 58, height: 58,
                                         borderRadius: "50%",
-                                        border: `2.5px solid ${g.dot}`,
+                                        border: `3px solid ${g.dot}`,
                                         backgroundColor: `${g.dot}22`,
                                         display: "flex", alignItems: "center", justifyContent: "center",
-                                        marginBottom: 2,
+                                        marginBottom: 4,
                                       }}>
                                         <span style={{ fontSize: emojiSize, lineHeight: 1 }}>{cfg.emoji}</span>
                                       </div>
@@ -699,19 +699,19 @@ export default function RiceFitApp() {
                                           opacity: isFuture ? 0.25 : 1,
                                           display: "block",
                                           textAlign: "center",
-                                          height: 48,
-                                          lineHeight: "48px",
+                                          height: 62,
+                                          lineHeight: "62px",
                                         }}
                                       >
                                         {cfg.emoji}
                                       </span>
                                     )}
-                                    <span className="text-center leading-tight text-gray-400" style={{ fontSize: 8, width: 40 }}>{cfg.label}</span>
+                                    <span className="text-center leading-tight text-gray-500" style={{ fontSize: 11, width: 52, fontWeight: isCurrent ? 600 : 400 }}>{cfg.label}</span>
                                   </div>
                                   {i < 4 && (
                                     <div
                                       className="flex-1 h-0.5"
-                                      style={{ backgroundColor: i < g.stageIndex ? g.dot : "#e5e7eb", marginTop: -20 }}
+                                      style={{ backgroundColor: i < g.stageIndex ? g.dot : "#e5e7eb", marginTop: -26 }}
                                     />
                                   )}
                                 </div>
