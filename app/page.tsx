@@ -266,8 +266,8 @@ export default function RiceFitApp() {
     setRiceType("");
     setPlantingDate("");
     setSensitivity("ไม่ไวแสง");
-    setNotifyBacterialBlight(false);
-    setNotifyBlast(false);
+    setNotifyBacterialBlight(true);
+    setNotifyBlast(true);
     setProvince("");
     setPlanData({});
     setPlanLoading(false);
