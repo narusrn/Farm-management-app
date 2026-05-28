@@ -676,29 +676,42 @@ export default function RiceFitApp() {
                                 const isCurrent = i === g.stageIndex;
                                 const isPast    = i < g.stageIndex;
                                 const isFuture  = i > g.stageIndex;
-                                const emojiSize = isCurrent ? 22 : isPast ? 10 + i * 2 : 10;
+                                const emojiSize = isCurrent ? 30 : isPast ? 14 + i * 2 : 14;
                                 return (
                                 <div key={i} className="flex items-center" style={{ flex: i < 4 ? "1" : "0" }}>
-                                  <div className="flex flex-col items-center" style={{ width: 32 }}>
-                                    <span
-                                      className="transition-all leading-none"
-                                      style={{
-                                        fontSize: emojiSize,
-                                        opacity: isFuture ? 0.2 : 1,
-                                        display: "block",
-                                        textAlign: "center",
-                                        minHeight: 24,
-                                        lineHeight: isCurrent ? "24px" : `${Math.max(emojiSize + 2, 24)}px`,
-                                      }}
-                                    >
-                                      {cfg.emoji}
-                                    </span>
-                                    <span className="text-center leading-tight text-gray-400" style={{ fontSize: 8, width: 32, marginTop: isCurrent ? 2 : 0 }}>{cfg.label}</span>
+                                  <div className="flex flex-col items-center" style={{ width: 40 }}>
+                                    {isCurrent ? (
+                                      <div style={{
+                                        width: 46, height: 46,
+                                        borderRadius: "50%",
+                                        border: `2.5px solid ${g.dot}`,
+                                        backgroundColor: `${g.dot}22`,
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        marginBottom: 2,
+                                      }}>
+                                        <span style={{ fontSize: emojiSize, lineHeight: 1 }}>{cfg.emoji}</span>
+                                      </div>
+                                    ) : (
+                                      <span
+                                        className="transition-all leading-none"
+                                        style={{
+                                          fontSize: emojiSize,
+                                          opacity: isFuture ? 0.25 : 1,
+                                          display: "block",
+                                          textAlign: "center",
+                                          height: 48,
+                                          lineHeight: "48px",
+                                        }}
+                                      >
+                                        {cfg.emoji}
+                                      </span>
+                                    )}
+                                    <span className="text-center leading-tight text-gray-400" style={{ fontSize: 8, width: 40 }}>{cfg.label}</span>
                                   </div>
                                   {i < 4 && (
                                     <div
-                                      className="flex-1 h-0.5 -mt-3.5"
-                                      style={{ backgroundColor: i < g.stageIndex ? g.dot : "#e5e7eb" }}
+                                      className="flex-1 h-0.5"
+                                      style={{ backgroundColor: i < g.stageIndex ? g.dot : "#e5e7eb", marginTop: -20 }}
                                     />
                                   )}
                                 </div>
