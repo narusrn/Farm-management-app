@@ -88,13 +88,13 @@ def fetch_forecast(farm: dict, historic_days: int = 21) -> list:
 
 # ─── Risk analysis ──────────────────────────────────────────────────────────────
 
-def analyze_risk(records: list) -> dict | None:
+def analyze_risk(records: list, min_cnt: int = 1) -> dict | None:
     today  = date.today().isoformat()
     future = [r for r in records if r.get("date", "") >= today]
     result = {}
     for key, label in [("cnt_blast_disease", "โรคใบไหม้"),
                        ("cnt_blb_disease",   "โรคขอบใบแห้ง")]:
-        risky = [r for r in future if r.get(key, 0) > 0]
+        risky = [r for r in future if r.get(key, 0) >= min_cnt]
         if risky:
             result[key] = {
                 "label":   label,
@@ -102,6 +102,25 @@ def analyze_risk(records: list) -> dict | None:
                 "max_cnt": max(r[key] for r in risky),
             }
     return result if result else None
+
+
+# ─── Dot bar ─────────────────────────────────────────────────────────────────────
+
+def _dot_bar(records: list, key: str) -> dict:
+    """7-dot row: สีตามระดับความเสี่ยงรายวัน ● สีแดง/ส้ม/เหลือง/เทา"""
+    today    = date.today().isoformat()
+    upcoming = [r for r in records if r.get("date", "") >= today][:7]
+    dots = []
+    for r in upcoming:
+        cnt   = r.get(key, 0)
+        color = (
+            "#c62828" if cnt >= 5 else
+            "#e65100" if cnt >= 3 else
+            "#f9a825" if cnt >= 1 else
+            "#dddddd"
+        )
+        dots.append({"type": "text", "text": "●", "size": "xs", "color": color, "flex": 0})
+    return {"type": "box", "layout": "horizontal", "spacing": "xs", "contents": dots}
 
 
 # ─── Forecast strip ──────────────────────────────────────────────────────────────
@@ -172,26 +191,29 @@ def build_alert_bubble(farm: dict, risk: dict, records: list) -> dict:
     )
 
     disease_rows = []
-    for info in risk.values():
-        emoji, sev_label, sev_color = _severity(info["max_cnt"])
+    for key, info in risk.items():
+        emoji, _, dc = _severity(info["max_cnt"])
         disease_rows.append({
-            "type": "box", "layout": "horizontal",
-            "spacing": "sm", "alignItems": "center",
+            "type": "box", "layout": "vertical", "margin": "sm",
             "contents": [
-                {"type": "text", "text": emoji, "flex": 0, "size": "sm"},
                 {
-                    "type": "box", "layout": "vertical", "flex": 1,
+                    "type": "box", "layout": "horizontal", "alignItems": "center",
                     "contents": [
-                        {"type": "text", "text": info["label"],
-                         "size": "sm", "weight": "bold", "color": "#333333"},
-                        {"type": "text",
-                         "text": f"เริ่ม {_thai_date(info['onset'])}  ·  {info['max_cnt']} วันต่อเนื่อง",
-                         "size": "xs", "color": "#888888"},
+                        {"type": "text", "text": f"{emoji}  {info['label']}",
+                         "size": "sm", "weight": "bold", "color": "#333333", "flex": 1},
+                        {"type": "text", "text": f"{info['max_cnt']} วัน",
+                         "size": "sm", "weight": "bold", "color": dc, "flex": 0},
                     ],
                 },
-                {"type": "text", "text": sev_label,
-                 "size": "xs", "color": sev_color,
-                 "flex": 0, "align": "end", "weight": "bold"},
+                {
+                    "type": "box", "layout": "horizontal", "alignItems": "center",
+                    "spacing": "sm", "margin": "xs",
+                    "contents": [
+                        _dot_bar(records, key),
+                        {"type": "text", "text": f"เริ่ม {_thai_date(info['onset'])}",
+                         "size": "xs", "color": "#aaaaaa", "flex": 0},
+                    ],
+                },
             ],
         })
 

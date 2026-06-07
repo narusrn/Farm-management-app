@@ -60,8 +60,8 @@ def _growth_stage(planting_date_str: str, sensitivity: str):
 
 # ─── Public builders ─────────────────────────────────────────────────────────────
 
-def build_farm_bubble(farm: dict, select_mode: str | None = None) -> dict:
-    """Single farm card bubble. select_mode: 'soil' | 'risk' | None."""
+def build_farm_bubble(farm: dict, select_mode: str | None = None, postback: bool = False) -> dict:
+    """Single farm card bubble. select_mode: 'soil'|'risk'|None. postback: use postback action instead of URI."""
     farm_id       = farm.get("id") or farm.get("farm_id", "")
     farm_name     = farm.get("farm_name") or "ไม่ระบุชื่อ"
     rice_variety  = farm.get("rice_variety") or "ไม่ระบุ"
@@ -176,10 +176,18 @@ def build_farm_bubble(farm: dict, select_mode: str | None = None) -> dict:
 
     # ── Footer ──────────────────────────────────────────────────────────────────
     if select_mode:
+        if postback:
+            select_action = {
+                "type": "postback",
+                "label": "✅ เลือกแปลงนี้",
+                "data": f"check={select_mode}&farm_id={farm_id}",
+                "displayText": f"เลือกแปลง {farm_name}",
+            }
+        else:
+            select_action = {"type": "uri", "label": "✅ เลือกแปลงนี้", "uri": liff_uri}
         footer_contents = [
             {"type": "button", "style": "primary", "color": header_color,
-             "height": "sm", "flex": 3,
-             "action": {"type": "uri", "label": "✅ เลือกแปลงนี้", "uri": liff_uri}},
+             "height": "sm", "flex": 3, "action": select_action},
             {"type": "button", "style": "secondary", "height": "sm", "flex": 1,
              "action": {"type": "uri", "label": "📍", "uri": map_uri}},
         ]
