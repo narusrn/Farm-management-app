@@ -11,7 +11,7 @@ import {
   deleteFarm as apiDeleteFarm,
   Farm,
   FarmPayload,
-  DiseaseKey,
+  NotificationKey,
 } from "@/app/api/routes/farm";
 
 const CONFIG = {
@@ -129,6 +129,7 @@ export default function RiceFitApp() {
   const [sensitivity, setSensitivity] = useState<"ไวแสง" | "ไม่ไวแสง">("ไม่ไวแสง");
   const [notifyBacterialBlight, setNotifyBacterialBlight] = useState(true);
   const [notifyBlast, setNotifyBlast] = useState(true);
+  const [notifyTemperature, setNotifyTemperature] = useState(true);
   const [province, setProvince] = useState("");
 
   // Crop planning state
@@ -211,9 +212,10 @@ export default function RiceFitApp() {
 
     try {
       setLoading(true);
-      const diseases: DiseaseKey[] = [];
+      const diseases: NotificationKey[] = [];
       if (notifyBacterialBlight) diseases.push("blight");
       if (notifyBlast) diseases.push("blast");
+      if (notifyTemperature) diseases.push("temperature");
 
       const payload: FarmPayload = {
         farm_name: farmName,
@@ -271,6 +273,7 @@ export default function RiceFitApp() {
     setSensitivity("ไม่ไวแสง");
     setNotifyBacterialBlight(true);
     setNotifyBlast(true);
+    setNotifyTemperature(true);
     setProvince("");
     setPlanData({});
     setPlanLoading(false);
@@ -297,6 +300,7 @@ export default function RiceFitApp() {
       if (farm.sensitivity) setSensitivity(farm.sensitivity as "ไวแสง" | "ไม่ไวแสง");
       setNotifyBacterialBlight(farm.notification_diseases.includes("blight"));
       setNotifyBlast(farm.notification_diseases.includes("blast"));
+      setNotifyTemperature(farm.notification_diseases.includes("temperature"));
       setProvince(farm.province || "");
       setCurrentScreen("draw");
     }
@@ -661,6 +665,9 @@ export default function RiceFitApp() {
                           )}
                           {farm.notification_diseases.includes("blast") && (
                             <span className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded-full font-medium">โรคไหม้</span>
+                          )}
+                          {farm.notification_diseases.includes("temperature") && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-medium">อุณหภูมิ</span>
                           )}
                         </div>
                       )}
@@ -1156,9 +1163,9 @@ export default function RiceFitApp() {
                 </div>
               )}
 
-              {/* Disease Notifications */}
+              {/* Notifications */}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">การแจ้งเตือนโรคข้าว</h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">การแจ้งเตือน</h3>
                 <div className="space-y-3">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input
@@ -1182,6 +1189,18 @@ export default function RiceFitApp() {
                     <div>
                       <p className="text-gray-800 font-medium leading-tight">โรคไหม้</p>
                       <p className="text-xs text-gray-400 mt-0.5">Blast</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyTemperature}
+                      onChange={(e) => setNotifyTemperature(e.target.checked)}
+                      className="mt-0.5 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <div>
+                      <p className="text-gray-800 font-medium leading-tight">อุณหภูมิผิดปกติ</p>
+                      <p className="text-xs text-gray-400 mt-0.5">เสี่ยงเป็นหมัน/ชะงักการเจริญเติบโตตามระยะข้าว</p>
                     </div>
                   </label>
                 </div>
@@ -1259,6 +1278,9 @@ export default function RiceFitApp() {
                     )}
                     {currentFarm.notification_diseases.includes("blast") && (
                       <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">โรคไหม้</span>
+                    )}
+                    {currentFarm.notification_diseases.includes("temperature") && (
+                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">อุณหภูมิ</span>
                     )}
                   </div>
                 </div>

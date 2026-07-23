@@ -1,4 +1,4 @@
-export type DiseaseKey = "blast" | "blight" | "brown_spot" | "tungro";
+export type NotificationKey = "blast" | "blight" | "brown_spot" | "tungro" | "temperature";
 
 export interface Farm {
   id: string;
@@ -7,7 +7,7 @@ export interface Farm {
   longitude: number;
   rice_variety: string;
   planting_date: string;
-  notification_diseases: DiseaseKey[];
+  notification_diseases: NotificationKey[];
   province?: string;
   sensitivity?: string;
   created_at?: string;
@@ -19,7 +19,7 @@ export interface FarmPayload {
   longitude: number;
   rice_variety: string;
   planting_date: string;
-  notification_diseases: DiseaseKey[];
+  notification_diseases: NotificationKey[];
   province?: string;
   sensitivity?: string;
 }
