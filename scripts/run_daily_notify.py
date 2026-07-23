@@ -20,8 +20,13 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env.local")
 load_dotenv(dotenv_path=Path("/storage/teera/innovation/innovation-service/ricefit-m/chatbot/v2/bot/.env"))
 
-from notify_disease_forecast import fetch_forecast, analyze_risk, build_alert_messages
+from notify_disease_forecast import (
+    fetch_forecast, analyze_risk,
+    analyze_growth_risk, build_combined_alert_messages,
+)
 from farm_carousel import get_farms, send_to_line
+from weather_utils import get_forecast_risk_records
+from messages import _growth_stage
 
 NECTEC_BASE_URL = os.getenv("NEXT_PUBLIC_API_BASE_URL", "")
 NECTEC_API_KEY  = os.getenv("NECTEC_API_KEY", "")
@@ -84,67 +89,87 @@ def _filter_risk(risk: dict, subscribed: list[str]) -> dict:
 
 # ─── Per-user logic ─────────────────────────────────────────────────────────────
 
-def _collect_alert_farms(user_id: str) -> list | None:
-    """ดึงแปลงและเช็คความเสี่ยง — คืน None ถ้า get_farms ล้มเหลว"""
+def _collect_alert_farms(user_id: str):
+    """ดึงแปลงและเช็คความเสี่ยงทั้งโรค (NECTEC) และอุณหภูมิ (weather_utils ในเครื่อง)
+    คืน (disease_alerts, growth_alerts) หรือ (None, None) ถ้า get_farms ล้มเหลว"""
     try:
         farms = get_farms(user_id)
     except Exception as e:
         print(f"[WARN] {user_id}: get_farms ล้มเหลว — {e}")
-        return None
+        return None, None
 
     notifiable = [f for f in farms if f.get("notification_diseases")]
     if not notifiable:
         print(f"[SKIP] {user_id}: ไม่มีแปลงที่เปิด notification")
-        return []
+        return [], []
 
-    alert_farms = []
+    disease_alerts = []
+    growth_alerts  = []
+
     for farm in notifiable:
         farm_name  = farm.get("farm_name") or "ไม่ระบุชื่อ"
         subscribed = farm.get("notification_diseases", [])
+
+        # ── ความเสี่ยงโรค (NECTEC /ricefit_forecast) ──
         try:
             records = fetch_forecast(farm)
-            risk    = analyze_risk(records, min_cnt=5)
+            risk    = _filter_risk(analyze_risk(records, min_cnt=5) or {}, subscribed)
         except Exception as e:
-            print(f"  [WARN] {farm_name}: {e}")
+            print(f"  [WARN] {farm_name}: disease check ล้มเหลว — {e}")
+            risk = {}
+
+        if risk:
+            print(f"  [ALERT] {farm_name}: {', '.join(v['label'] for v in risk.values())}")
+            disease_alerts.append((farm, risk, records))
+        else:
+            print(f"  [OK]    {farm_name}: ปลอดภัย (โรค)")
+
+        # ── ความเสี่ยงอุณหภูมิ/ระยะการเจริญเติบโต (Open-Meteo ผ่าน weather_utils) ──
+        if "temperature" not in subscribed:
+            continue
+        lat, lon = farm.get("latitude"), farm.get("longitude")
+        if not lat or not lon:
+            continue
+        try:
+            growth_records = get_forecast_risk_records(lat, lon)
+            stage_idx, _, _ = _growth_stage(farm.get("planting_date") or "", farm.get("sensitivity") or "ไม่ไวแสง")
+            growth_risk = analyze_growth_risk(growth_records, stage_idx)
+        except Exception as e:
+            print(f"  [WARN] {farm_name}: temperature check ล้มเหลว — {e}")
             continue
 
-        if not risk:
-            print(f"  [OK]    {farm_name}: ปลอดภัย")
-            continue
+        if growth_risk:
+            print(f"  [ALERT] {farm_name}: {', '.join(v['label'] for v in growth_risk.values())}")
+            growth_alerts.append((farm, growth_risk, growth_records))
+        else:
+            print(f"  [OK]    {farm_name}: ปลอดภัย (อุณหภูมิ)")
 
-        risk = _filter_risk(risk, subscribed)
-        if not risk:
-            print(f"  [OK]    {farm_name}: มีความเสี่ยงแต่ไม่ตรงโรคที่ subscribe")
-            continue
-
-        print(f"  [ALERT] {farm_name}: {', '.join(v['label'] for v in risk.values())}")
-        alert_farms.append((farm, risk, records))
-
-    return alert_farms
+    return disease_alerts, growth_alerts
 
 
 def _notify_user(user_id: str, dry_run: bool) -> None:
-    alert_farms = _collect_alert_farms(user_id)
-    if alert_farms is None:
+    disease_alerts, growth_alerts = _collect_alert_farms(user_id)
+    if disease_alerts is None:
         return
 
-    if not alert_farms:
+    if not disease_alerts and not growth_alerts:
         print(f"[INFO] {user_id}: ทุกแปลงปลอดภัย — ไม่ส่ง notification")
         if not dry_run:
             log_notification(user_id, "no_risk")
         return
 
-    messages = build_alert_messages(alert_farms)
+    messages = build_combined_alert_messages(disease_alerts, growth_alerts)
+    summary  = f"โรค {len(disease_alerts)} แปลง / อุณหภูมิ {len(growth_alerts)} แปลง"
 
     if dry_run:
-        print(f"[DRY-RUN] {user_id}: จะส่ง {len(alert_farms)} แปลง")
+        print(f"[DRY-RUN] {user_id}: จะส่ง {summary}")
         print(json.dumps(messages, ensure_ascii=False, indent=2))
         return
 
     try:
         send_to_line(user_id, messages)
         log_notification(user_id, "success")
-        print(f"[SENT] {user_id}: ส่งแจ้งเตือน {len(alert_farms)} แปลงสำเร็จ")
+        print(f"[SENT] {user_id}: ส่งแจ้งเตือน {summary} สำเร็จ")
     except Exception as e:
         log_notification(user_id, "failed")
         print(f"[ERROR] {user_id}: ส่งไม่สำเร็จ — {e}")
