@@ -14,7 +14,13 @@ export async function PATCH(
       headers: { "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json().catch(() => ({}));
+    if (!(res.headers.get("content-type") ?? "").includes("application/json")) {
+      return NextResponse.json({ error: "upstream rejected the request" }, { status: 502 });
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.success === false) {
+      return NextResponse.json(data ?? { error: "update farm failed" }, { status: res.ok ? 502 : res.status });
+    }
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json({ error: "failed to update farm" }, { status: 500 });
@@ -31,7 +37,13 @@ export async function DELETE(
       method: "DELETE",
       headers: { accept: "application/json" },
     });
-    const data = await res.json().catch(() => ({}));
+    if (!(res.headers.get("content-type") ?? "").includes("application/json")) {
+      return NextResponse.json({ error: "upstream rejected the request" }, { status: 502 });
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.success === false) {
+      return NextResponse.json(data ?? { error: "delete farm failed" }, { status: res.ok ? 502 : res.status });
+    }
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json({ error: "failed to delete farm" }, { status: 500 });

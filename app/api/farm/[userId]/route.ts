@@ -30,7 +30,13 @@ export async function POST(
       headers: { "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json().catch(() => ({}));
+    if (!(res.headers.get("content-type") ?? "").includes("application/json")) {
+      return NextResponse.json({ error: "upstream rejected the request" }, { status: 502 });
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.success === false) {
+      return NextResponse.json(data ?? { error: "create farm failed" }, { status: res.ok ? 502 : res.status });
+    }
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json({ error: "failed to create farm" }, { status: 500 });

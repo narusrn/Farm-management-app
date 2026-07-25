@@ -108,7 +108,7 @@ declare global {
 export default function RiceFitApp() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("farms");
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [farms, setFarms] = useState<Farm[]>([]);
@@ -146,8 +146,8 @@ export default function RiceFitApp() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const previewMapContainerRef = useRef<HTMLDivElement>(null);
 
-  const showToast = (message: string) => {
-    setToast(message);
+  const showToast = (message: string, type: "success" | "error" = "error") => {
+    setToast({ message, type });
     setTimeout(() => setToast(null), 2500);
   };
 
@@ -235,7 +235,7 @@ export default function RiceFitApp() {
       }
 
       setFarms(await apiFetchFarms(userId || ""));
-      showToast("บันทึกสำเร็จ");
+      showToast("บันทึกสำเร็จ", "success");
       resetForm();
       setCurrentScreen("farms");
     } catch {
@@ -251,7 +251,7 @@ export default function RiceFitApp() {
       setLoading(true);
       await apiDeleteFarm(userId || "", farmId);
       setFarms(await apiFetchFarms(userId || ""));
-      showToast("ลบแปลงสำเร็จ");
+      showToast("ลบแปลงสำเร็จ", "success");
       resetForm();
       setCurrentScreen("farms");
     } catch {
@@ -580,10 +580,13 @@ export default function RiceFitApp() {
 
       {toast && (
         <div
-          className="fixed bottom-24 left-4 right-4 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg z-[9999] text-center"
+          className={`fixed bottom-24 left-4 right-4 text-white px-4 py-3 rounded-xl shadow-lg z-[9999] text-center flex items-center justify-center gap-2 ${
+            toast.type === "success" ? "bg-green-600" : "bg-red-600"
+          }`}
           style={{ animation: "slideUp 0.3s ease-out" }}
         >
-          {toast}
+          <span>{toast.type === "success" ? "✓" : "✕"}</span>
+          <span>{toast.message}</span>
         </div>
       )}
 
